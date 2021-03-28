@@ -29,22 +29,13 @@ library
                      , bytestring
                      , containers
                      , flat
-                     , generic-lens-core
-                     , generic-optics
-                     , generics-sop
-                     , hashable
-                     , integer-roots
                      , network >= 3.1 && < 3.2
                      , network-run
-                     , optics
                      , QuickCheck
                      , random
-                     , safe
                      , stm
                      , time
                      , text
-                     , transformers
-                     , unordered-containers
 
                      , ekg
                      , ekg-core

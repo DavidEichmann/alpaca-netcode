@@ -27,7 +27,6 @@ module Alpaca.NetCode.Core.Common where
 import Control.Concurrent.STM as STM
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as BSL
-import Data.Hashable
 import qualified Data.List as L
 import Data.Map (Map)
 import qualified Data.Map as M
@@ -95,7 +94,7 @@ instance Semigroup Tick where (<>) = (+)
 
 newtype PlayerId = PlayerId {unPlayerId :: Word8}
   deriving stock (Show)
-  deriving newtype (Eq, Ord, Num, Hashable)
+  deriving newtype (Eq, Ord, Num)
 
 
 deriving via Word8 instance (Flat PlayerId)
