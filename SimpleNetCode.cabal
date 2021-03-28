@@ -53,6 +53,8 @@ test-suite test
   Main-is:                  Test.hs
   Build-depends:            base
                           , alpaca-netcode-core
+                          , containers
+                          , random
                           , tasty
                           , tasty-hunit
                           , tasty-quickcheck

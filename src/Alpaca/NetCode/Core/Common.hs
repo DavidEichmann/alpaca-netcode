@@ -160,7 +160,7 @@ simulateNetConditions doSendMsg doRecvMsg simMay = case simMay of
     return
       ( -- Sending a message just starts a thread that delays the send.
         \msg -> do
-          dropPacket <- (<= loss) <$> randomRIO (0, 1)
+          dropPacket <- (< loss) <$> randomRIO (0, 1)
           when (not dropPacket) $ do
             jitterT <- randomRIO (negate jitter, jitter)
             let latency = max 0 ((ping / 2) + jitterT)

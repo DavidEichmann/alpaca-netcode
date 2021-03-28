@@ -35,7 +35,6 @@ import qualified Data.Map as M
 import Data.Maybe (fromMaybe, isJust, isNothing)
 import Data.Time (getCurrentTime)
 import Flat
-import Network.Socket
 import Prelude
 
 import Alpaca.NetCode.Core.Common
@@ -53,15 +52,15 @@ data PlayerData = PlayerData
 
 
 runServer ::
-  forall input.
-  (Eq input, Flat input) =>
+  forall input clientAddress.
+  (Eq input, Flat input, Show clientAddress, Ord clientAddress) =>
   -- | Function to send messages to clients. The underlying communication
   -- protocol need only guarantee data integrity but is otherwise free to drop
   -- and reorder packets. Typically this is backed by a UDP socket.
-  (NetMsg input -> SockAddr -> IO ()) ->
+  (NetMsg input -> clientAddress -> IO ()) ->
   -- | Chan to receive messages from clients. Has the same requirements as
   -- the send TChan.
-  (IO (NetMsg input, SockAddr)) ->
+  (IO (NetMsg input, clientAddress)) ->
   -- | Ticks per second. Must be the same across all host/clients.
   Int32 ->
   -- | Network options
@@ -87,7 +86,7 @@ runServer sendToClient' recvFromClient' tickFreq netConfig input0 = playCommon t
   nextTickTVar :: TVar Tick <- newTVarIO 1
 
   -- Known players as of now. Nothing means the host (me).
-  playersTVar :: TVar (M.Map SockAddr PlayerData) <- newTVarIO M.empty
+  playersTVar :: TVar (M.Map clientAddress PlayerData) <- newTVarIO M.empty
   -- Known Players (
   --               , last time for which a message was received
   --               )
