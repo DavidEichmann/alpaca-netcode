@@ -22,7 +22,7 @@
 {-# LANGUAGE ViewPatterns #-}
 
 -- | Rollback and replay based game networking
-module Common where
+module Alpaca.NetCode.Core.Common where
 
 import Control.Concurrent.STM as STM
 import qualified Data.ByteString as BS
@@ -34,7 +34,6 @@ import qualified Data.Map as M
 import Data.Time.Clock
 import Data.Word (Word8)
 import Flat
-import FlatOrphans ()
 import Network.Socket
 import Network.Socket.ByteString as NBS
 import Prelude

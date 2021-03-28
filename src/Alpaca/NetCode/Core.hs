@@ -20,7 +20,7 @@
 {-# LANGUAGE TypeFamilies #-}
 
 -- | Rollback and replay based game networking
-module NetCode
+module Alpaca.NetCode.Core
   ( runServer,
     runClient,
     Tick (..),
@@ -32,15 +32,7 @@ module NetCode
   )
 where
 
--- import           Data.List (foldl')
-
--- import qualified Data.Set as S
--- import           Data.Time.Clock
-
--- import qualified Graphics.Gloss.Interface.IO.Game as Gloss
-
-import Client
-import Common
-import FlatOrphans ()
-import Network.Socket
-import Server
+import Alpaca.NetCode.Core.Client
+import Alpaca.NetCode.Core.Common
+import Network.Socket (HostName)
+import Alpaca.NetCode.Core.Server

@@ -20,12 +20,12 @@
 {-# LANGUAGE TypeFamilies #-}
 
 -- | Rollback and replay based game networking
-module ClockSync where
+module Alpaca.NetCode.Core.ClockSync where
 
-import Prelude
-import Common
 import Control.Concurrent.STM
 import Data.Maybe (fromMaybe)
+
+import Alpaca.NetCode.Core.Common
 
 -- Min/Max Time dilation. This is the maximum speedup of our own clock that
 -- we'll allow to catch up to the estimated server clock. Note that the min is

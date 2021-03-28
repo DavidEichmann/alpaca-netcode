@@ -22,17 +22,8 @@
 {-# LANGUAGE TypeFamilies #-}
 
 -- | Rollback and replay based game networking
-module Client where
+module Alpaca.NetCode.Core.Client where
 
--- import           Data.List (foldl')
-
--- import qualified Data.Set as S
--- import           Data.Time.Clock
-
--- import qualified Graphics.Gloss.Interface.IO.Game as Gloss
-
-import ClockSync
-import Common
 import Control.Concurrent (ThreadId, forkIO, threadDelay)
 import Control.Concurrent.STM as STM
 import qualified Control.Exception as E
@@ -47,7 +38,6 @@ import Data.Maybe (catMaybes, fromMaybe, isJust, isNothing)
 import qualified Data.Set as S
 import qualified Data.Text as T
 import Flat
-import FlatOrphans ()
 import Network.Socket
     ( defaultHints,
       getAddrInfo,
@@ -70,7 +60,9 @@ import qualified System.Metrics.Label as Label
 import System.Random
 import qualified System.Remote.Monitoring as Ekg
 import Text.Read
-import Prelude
+
+import Alpaca.NetCode.Core.ClockSync
+import Alpaca.NetCode.Core.Common
 
 
 -- | Maximum number of ticks to predict. If the client is this many ticks behind

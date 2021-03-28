@@ -19,13 +19,12 @@ extra-source-files:  CHANGELOG.md
 
 library
   other-modules:
-      FlatOrphans
+      Alpaca.NetCode.Core.Client
+    , Alpaca.NetCode.Core.ClockSync
+    , Alpaca.NetCode.Core.Common
+    , Alpaca.NetCode.Core.Server
   exposed-modules:
-      Client
-    , ClockSync
-    , Common
-    , Server
-    , NetCode
+      Alpaca.NetCode.Core
   build-depends:       base
                      , bytestring
                      , containers

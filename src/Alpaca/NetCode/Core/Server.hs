@@ -20,7 +20,7 @@
 {-# LANGUAGE TypeFamilies #-}
 
 -- | Rollback and replay based game networking
-module Server where
+module Alpaca.NetCode.Core.Server where
 
 -- import           Data.List (foldl')
 
@@ -29,7 +29,6 @@ module Server where
 
 -- import qualified Graphics.Gloss.Interface.IO.Game as Gloss
 
-import Common
 import Control.Applicative
 import Control.Concurrent (ThreadId, forkIO, killThread, threadDelay)
 import Control.Concurrent.STM as STM
@@ -43,13 +42,13 @@ import qualified Data.Map as M
 import Data.Maybe (fromMaybe, isJust, isNothing)
 import Data.Time (getCurrentTime)
 import Flat
-import FlatOrphans ()
 import Network.Run.UDP
 import Network.Socket
 import Network.Socket.ByteString as NBS
 import System.Random (randomRIO)
 import Prelude
 
+import Alpaca.NetCode.Core.Common
 
 -- | Per player info stored by the server
 data PlayerData = PlayerData
