@@ -22,15 +22,8 @@
 -- | Rollback and replay based game networking
 module Alpaca.NetCode.Core.Server where
 
--- import           Data.List (foldl')
-
--- import qualified Data.Set as S
--- import           Data.Time.Clock
-
--- import qualified Graphics.Gloss.Interface.IO.Game as Gloss
-
 import Control.Applicative
-import Control.Concurrent (ThreadId, forkIO, killThread, threadDelay)
+import Control.Concurrent (forkIO, killThread, threadDelay)
 import Control.Concurrent.STM as STM
 import Control.Monad (forM_, forever, join, when)
 import Data.Coerce (coerce)
@@ -42,10 +35,7 @@ import qualified Data.Map as M
 import Data.Maybe (fromMaybe, isJust, isNothing)
 import Data.Time (getCurrentTime)
 import Flat
-import Network.Run.UDP
 import Network.Socket
-import Network.Socket.ByteString as NBS
-import System.Random (randomRIO)
 import Prelude
 
 import Alpaca.NetCode.Core.Common
@@ -65,6 +55,13 @@ data PlayerData = PlayerData
 runServer ::
   forall input.
   (Eq input, Flat input) =>
+  -- | Function to send messages to clients. The underlying communication
+  -- protocol need only guarantee data integrity but is otherwise free to drop
+  -- and reorder packets. Typically this is backed by a UDP socket.
+  (NetMsg input -> SockAddr -> IO ()) ->
+  -- | Chan to receive messages from clients. Has the same requirements as
+  -- the send TChan.
+  (IO (NetMsg input, SockAddr)) ->
   -- | Ticks per second. Must be the same across all host/clients.
   Int32 ->
   -- | Network options
@@ -72,7 +69,12 @@ runServer ::
   -- | Initial input for new players.
   input ->
   IO ()
-runServer tickFreq netConfig input0 = playCommon tickFreq $ \tickTime getTime resetTime -> forever $ do
+runServer sendToClient' recvFromClient' tickFreq netConfig input0 = playCommon tickFreq $ \tickTime getTime resetTime -> forever $ do
+  (sendToClient'', recvFromClient) <- simulateNetConditions
+    (uncurry sendToClient')
+    recvFromClient'
+    (simulatedNetConditions netConfig)
+  let sendToClient = curry sendToClient''
   putStrLn "Waiting for clients"
 
   -- Authoritative Map from tick and PlayerId to inputs. The inner map is
@@ -97,24 +99,13 @@ runServer tickFreq netConfig input0 = playCommon tickFreq $ \tickTime getTime re
   -- behind clients. This allows for ample time to receive inputs even
   -- with large ping and jitter. Although the authoritative simulation is
   -- significantly behind clients, we send input hints eagerly, and that
-  -- allows clients to make accurately predictions and hence they don't
-  -- perceive the lag in authoritative simulation.
-  ( sendChan :: NetMsg input -> SockAddr -> STM ()
-    , _duplicatedSendChan :: NetMsg input -> SockAddr -> STM ()
-    , rcvChan :: STM (NetMsg input, SockAddr)
-    ) <- do
-    (sendChan', rcvChan') <- setupServer serverPort (simulatedNetConditions netConfig)
-    let sendFn msg addr = writeTChan sendChan' (msg, addr)
-    return
-      ( sendFn
-      , sendFn -- TODO reliable (this isn't even duplicated)!
-      , readTChan rcvChan'
-      )
+  -- allows clients to make accurate predictions and hence they don't
+  -- perceive the lag in authoritative inputs.
 
   -- Main message processing loop
   msgProcessingTID <- forkIO $
     forever $ do
-      (msg, sender) <- atomically $ rcvChan
+      (msg, sender) <- recvFromClient
 
       -- Handle the message
       serverReceiveTimeMay <- case msg of
@@ -156,17 +147,16 @@ runServer tickFreq netConfig input0 = playCommon tickFreq $ \tickTime getTime re
                 Just PlayerData{..} -> do
                   -- Existing player
                   return (playerId, Nothing, currentTime)
-              sendChan (Msg_Connected pid) sender
-              sendChan (Msg_HeartbeatResponse clientSendTime serverReceiveTime) sender
               return $ do
+                sendToClient (Msg_Connected pid) sender
+                sendToClient (Msg_HeartbeatResponse clientSendTime serverReceiveTime) sender
                 mapM_ putStrLn debugMsg
                 return (Just serverReceiveTime)
         Msg_Heartbeat clientSendTime -> do
           serverReceiveTime <- getTime
-          atomically $ do
-            isConnected <- isJust . M.lookup sender <$> readTVar playersTVar
-            when isConnected $ sendChan (Msg_HeartbeatResponse clientSendTime serverReceiveTime) sender
-            return (Just serverReceiveTime)
+          isConnected <- atomically (isJust . M.lookup sender <$> readTVar playersTVar)
+          when isConnected $ sendToClient (Msg_HeartbeatResponse clientSendTime serverReceiveTime) sender
+          return (Just serverReceiveTime)
         Msg_Ack clientMaxAuthTick -> do
           atomically $ modifyTVar playersTVar (M.update (\pd -> Just $ pd{maxAuthTick = clientMaxAuthTick}) sender)
           Just <$> getTime
@@ -221,14 +211,13 @@ runServer tickFreq netConfig input0 = playCommon tickFreq $ \tickTime getTime re
                 <*> readTVar nextTickTVar
           forM_ (filter (\t -> 0 <= t && t < Tick nextTick) ticks) $ \(Tick tick) -> do
             let x = inputs IM.! tick
-            atomically $
-              sendChan
-                ( Msg_AuthInput
-                    (Tick tick)
-                    (toCompactMaps [x])
-                    (toCompactMaps [])
-                )
-                sender
+            sendToClient
+              ( Msg_AuthInput
+                  (Tick tick)
+                  (toCompactMaps [x])
+                  (toCompactMaps [])
+              )
+              sender
           Just <$> getTime
 
       -- set receive time for players
@@ -331,14 +320,13 @@ runServer tickFreq netConfig input0 = playCommon tickFreq $ \tickTime getTime re
                       | hintTick <- [succ nextAuthTick ..]
                       ]
         when (not $ null inputsToSend) $
-          atomically $ do
-            sendChan
-              ( Msg_AuthInput
-                  (lastAuthTick + 1)
-                  (toCompactMaps inputsToSend)
-                  (toCompactMaps hintsToSend)
-              )
-              sock
+          sendToClient
+            ( Msg_AuthInput
+                (lastAuthTick + 1)
+                (toCompactMaps inputsToSend)
+                (toCompactMaps hintsToSend)
+            )
+            sock
 
       -- Sleep thread till the next tick.
       currTime' <- getTime
@@ -357,6 +345,7 @@ runServer tickFreq netConfig input0 = playCommon tickFreq $ \tickTime getTime re
   mapM_ killThread [msgProcessingTID, disconnectTID, simTID]
 
 
+{- TODO move to Alpaca.NetCode
 setupServer ::
   forall input.
   (Flat input) =>
@@ -422,3 +411,4 @@ setupServer port simNetConMay = do
       -- _ <- simulateNetwork simduplicatedSendChan duplicatedSendChan
       _ <- simulateNetwork rcvChan simRcvChan
       return (simSendChan, simRcvChan)
+-}

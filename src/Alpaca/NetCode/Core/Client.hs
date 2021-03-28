@@ -24,9 +24,8 @@
 -- | Rollback and replay based game networking
 module Alpaca.NetCode.Core.Client where
 
-import Control.Concurrent (ThreadId, forkIO, threadDelay)
+import Control.Concurrent (forkIO, threadDelay)
 import Control.Concurrent.STM as STM
-import qualified Control.Exception as E
 import Control.Monad
 import Data.Coerce (coerce)
 import qualified Data.IORef as IORef
@@ -38,26 +37,9 @@ import Data.Maybe (catMaybes, fromMaybe, isJust, isNothing)
 import qualified Data.Set as S
 import qualified Data.Text as T
 import Flat
-import Network.Socket
-    ( defaultHints,
-      getAddrInfo,
-      withSocketsDo,
-      connect,
-      socket,
-      close,
-      AddrInfo(addrFlags, addrFamily, addrSocketType, addrProtocol,
-               addrAddress),
-      AddrInfoFlag(AI_PASSIVE),
-      HostName,
-      ServiceName,
-      SockAddr,
-      Socket,
-      SocketType(Datagram) )
-import Network.Socket.ByteString as NBS
 import qualified System.Environment as Env
 import qualified System.Metrics.Gauge as Gauge
 import qualified System.Metrics.Label as Label
-import System.Random
 import qualified System.Remote.Monitoring as Ekg
 import Text.Read
 
@@ -82,9 +64,14 @@ resyncThresholdTick = 500
 runClient ::
   forall w input.
   (Eq input, Flat input) =>
-  -- | Host Address
-  HostName ->
-  -- | Ticks per second. Must be the same across all host/clients.
+  -- | Function to send messages to the server. The underlying communication
+  -- protocol need only guarantee data integrity but is otherwise free to drop
+  -- and reorder packets. Typically this is backed by a UDP socket.
+  (NetMsg input -> IO ()) ->
+  -- | Chan to receive messages from the server. Has the same requirements as
+  -- the send TChan.
+  (IO (NetMsg input)) ->
+  -- | Ticks per second. Must be the same across all clients and the server.
   Int32 ->
   -- | Network options
   NetConfig ->
@@ -93,10 +80,10 @@ runClient ::
   -- | Stepping function (for a single tick). Must be the same across all
   -- host/clients. Takes:
   -- * a map from PlayerId to (previous, current) input.
-  -- * current game time in seconds
+  -- * current game tick.
   -- * previous tick's world state
   (M.Map PlayerId (input, input) -> Tick -> w -> w) ->
-  -- | Initial world
+  -- | Initial world state.
   w ->
   IO
     ( PlayerId
@@ -111,7 +98,12 @@ runClient ::
       -- godot, you'll likely collect inputs by impelemnting _input or similar
       -- and calling this function.
     )
-runClient host tickFreq netConfig input0 stepOneTick world0 = playCommon tickFreq $ \tickTime getTime _resetTime -> do
+runClient sendToServer' rcvFromServer' tickFreq netConfig input0 stepOneTick world0 = playCommon tickFreq $ \tickTime getTime _resetTime -> do
+  (sendToServer, rcvFromServer) <- simulateNetConditions
+    sendToServer'
+    rcvFromServer'
+    (simulatedNetConditions netConfig)
+
   -- Authoritative Map from tick and PlayerId to inputs. The inner map is
   -- always complete (e.g. if we have the IntMap for tick i, then it contains
   -- the inputs for *all* known players)
@@ -131,15 +123,6 @@ runClient host tickFreq netConfig input0 stepOneTick world0 = playCommon tickFre
   -- is NOT always complete (e.g. if we have the IntMap for tick i, then
   -- it may or may not yet contain all the inputs for *all* known players).
   hintInputsTVar :: TVar (IntMap (M.Map PlayerId input)) <- newTVarIO (IM.singleton 0 M.empty)
-
-  -- Direct UDP channels (unreliable, out of order) with the server.
-  ( sendChan :: NetMsg input -> STM ()
-    , duplicatedSendChan :: NetMsg input -> STM ()
-    , rcvChan :: STM (NetMsg input)
-    ) <- do
-    (sendChan', rcvChan') <- setupClient @input host serverPort (simulatedNetConditions netConfig)
-    let send' = writeTChan sendChan' -- TODO  not actually duplicated.. need to upgrade to reliable
-    return (send', send', readTChan rcvChan')
 
   -- Clock Sync
   (estimateServerTickPlusLatencyPlusBufferPlus, recordClockSyncSample, clockAnalytics) <- initializeClockSync tickTime getTime
@@ -238,7 +221,7 @@ runClient host tickFreq netConfig input0 stepOneTick world0 = playCommon tickFre
     forever $ do
       clientSendTime <- getTime
       isConnected <- isJust <$> atomically (readTVar myPlayerIdTVar)
-      atomically $ sendChan ((if isConnected then Msg_Heartbeat else Msg_Connect) clientSendTime)
+      sendToServer ((if isConnected then Msg_Heartbeat else Msg_Connect) clientSendTime)
       isClockReady <- isJust <$> clockAnalytics
       threadDelay $
         if isClockReady
@@ -248,7 +231,7 @@ runClient host tickFreq netConfig input0 stepOneTick world0 = playCommon tickFre
   -- Main message processing loop
   _ <- forkIO $
     forever $ do
-      msg <- atomically $ rcvChan
+      msg <- rcvFromServer
       IORef.atomicModifyIORef' packetRecvCounterIORef (\x -> (x + 1, ()))
       case msg of
         Msg_Connect{} ->
@@ -297,7 +280,7 @@ runClient host tickFreq netConfig input0 stepOneTick world0 = playCommon tickFre
           let hintInputss = fromCompactMaps hintInputssCompact
           resMsgs <- do
             -- Update maxAuthTickTVar if needed and send heartbeat
-            atomically $ do
+            ackMsg <- atomically $ do
               maxAuthTick <- readTVar maxAuthTickTVar
               let newestTick = headTick + fromIntegral (length authInputss) - 1
                   maxAuthTick' =
@@ -305,7 +288,8 @@ runClient host tickFreq netConfig input0 stepOneTick world0 = playCommon tickFre
                       then newestTick
                       else maxAuthTick
               writeTVar maxAuthTickTVar maxAuthTick'
-              sendChan (Msg_Ack maxAuthTick')
+              return (Msg_Ack maxAuthTick')
+            sendToServer ackMsg
 
             -- Save new auth inputs
             let newAuthTickHi = headTick + Tick (length authInputss)
@@ -340,7 +324,7 @@ runClient host tickFreq netConfig input0 stepOneTick world0 = playCommon tickFre
             let (loTickInt, _) = fromMaybe (error "Impossible! must have at least initial world") (IM.lookupMax authWorlds)
                 (hiTickInt, _) = fromMaybe (error "Impossible! must have at least initial inputs") (IM.lookupMax authInputs)
                 missingTicks = Tick <$> take maxRequestAuthInputs (filter (flip IM.notMember authInputs) [loTickInt + 1 .. hiTickInt - 1])
-            when (not (null missingTicks)) $ atomically $ sendChan (Msg_RequestAuthInput missingTicks)
+            when (not (null missingTicks)) $ sendToServer (Msg_RequestAuthInput missingTicks)
             return resMsg
           mapM_ debugStrLn (catMaybes resMsgs)
         Msg_HintInput tick playerId inputs -> do
@@ -470,26 +454,31 @@ runClient host tickFreq netConfig input0 stepOneTick world0 = playCommon tickFre
       -- server to have a future tick. Else we just collect them.
       \newInput -> do
         targetTick <- estimateServerTickPlusLatencyPlusBufferPlus (inputLatency netConfig)
-        atomically $ do
+        join $ atomically $ do
           -- event (esRev, lastTick, lastInput) -> do
           lastTick <- readTVar lastTickTVar
-          when (targetTick > lastTick) $ do
-            let commitInput input tick = do
-                  duplicatedSendChan (Msg_SubmitInput tick input) -- TODO we need to duplicate send to protect from dropped packets
-                  -- Store our own inputs as a hint so we get 0 latency. This
-                  -- is only a hint and not authoritative as it's still
-                  -- possible that submitted inputs are dropped or rejected by
-                  -- the server.
-                  modifyTVar hintInputsTVar (IM.alter (Just . M.insert myPlayerId input . fromMaybe M.empty) (coerce targetTick))
-            -- If we've jumped a few ticks forward than we keep the old input
-            -- constant as other clients would have predicte that by now.
-            -- forM_ [lastTick+1..targetTick-1] (commitInput lastInput)
-            commitInput newInput targetTick
-            writeTVar lastTickTVar targetTick
           writeTVar currentInputTVar newInput
+          if targetTick > lastTick
+            then do
+              -- If we've jumped a few ticks forward than we keep the old input
+              -- constant as other clients would have predicte that by now.
+              -- forM_ [lastTick+1..targetTick-1] (commitInput lastInput)
+              writeTVar lastTickTVar targetTick
+
+              -- Store our own inputs as a hint so we get 0 latency. This is
+              -- only a hint and not authoritative as it's still possible that
+              -- submitted inputs are dropped or rejected by the server.
+              modifyTVar hintInputsTVar
+                $ IM.alter
+                    (Just . M.insert myPlayerId newInput . fromMaybe M.empty)
+                    (coerce targetTick)
+
+              -- TODO we need to duplicate send to protect from dropped packets)
+              return (sendToServer (Msg_SubmitInput targetTick newInput))
+            else pure (return ())
     )
 
-
+{- TODO move to Alpaca.NetCode
 setupClient ::
   (Flat input) =>
   -- | Server address.
@@ -582,3 +571,4 @@ openSocket addr = do
   sock <- socket (addrFamily addr) (addrSocketType addr) (addrProtocol addr)
   connect sock (addrAddress addr)
   return sock
+-}

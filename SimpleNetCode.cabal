@@ -24,7 +24,8 @@ library
     , Alpaca.NetCode.Core.Common
     , Alpaca.NetCode.Core.Server
   exposed-modules:
-      Alpaca.NetCode.Core
+      Alpaca.NetCode
+    , Alpaca.NetCode.Core
   build-depends:       base
                      , bytestring
                      , containers

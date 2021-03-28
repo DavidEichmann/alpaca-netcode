@@ -36,6 +36,9 @@ import Flat
 import Network.Socket
 import Network.Socket.ByteString as NBS
 import Prelude
+import System.Random (randomRIO)
+import Control.Concurrent (forkIO, threadDelay, newChan, writeChan, readChan)
+import Control.Monad (when, forever)
 
 
 -- Constants
@@ -97,7 +100,7 @@ newtype PlayerId = PlayerId {unPlayerId :: Word8}
   deriving newtype (Eq, Ord, Num)
 
 
-deriving via Word8 instance (Flat PlayerId)
+deriving newtype instance (Flat PlayerId)
 
 
 data NetConfig = NetConfig
@@ -128,12 +131,45 @@ defaultNetConfig =
     -- msgDuplication = 5
     }
 
-
-data Determinism world
-  = -- | The step fucntion is deterministic. No need to send the world state,
-    -- hence no need for a Binary constraint on world.
-    Deterministic
-  | NonDeterministic
+simulateNetConditions ::
+  -- | Send function
+  (msg -> IO ()) ->
+  -- | Receive function (blocking)
+  (IO msg) ->
+  -- | Simulated ping/jitter/packetloss[0-1]
+  Maybe (Float, Float, Float) ->
+  -- | New send and receive functions.
+  IO ( msg -> IO ()
+     , IO msg
+     )
+simulateNetConditions doSendMsg doRecvMsg simMay = case simMay of
+  Nothing -> return (doSendMsg, doRecvMsg)
+  Just (ping, jitter, loss) -> do
+    -- Start a thread that just writes received messages into a chan
+    recvChan <- newChan
+    _recvThreadId <- forkIO $ forever $ do
+      msg <- doRecvMsg
+      dropPacket <- (<= loss) <$> randomRIO (0, 1)
+      when (not dropPacket) $ do
+        _ <- forkIO $ do
+          jitterT <- randomRIO (negate jitter, jitter)
+          let latency = max 0 ((ping / 2) + jitterT)
+          threadDelay (round $ latency * 1000000)
+          writeChan recvChan msg
+        return ()
+    return
+      ( -- Sending a message just starts a thread that delays the send.
+        \msg -> do
+          dropPacket <- (<= loss) <$> randomRIO (0, 1)
+          when (not dropPacket) $ do
+            jitterT <- randomRIO (negate jitter, jitter)
+            let latency = max 0 ((ping / 2) + jitterT)
+            _ <- forkIO $ do
+              threadDelay (round $ latency * 1000000)
+              doSendMsg msg
+            return ()
+      , readChan recvChan
+      )
 
 
 playCommon ::
