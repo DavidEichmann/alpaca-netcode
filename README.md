@@ -38,7 +38,15 @@ Run Client:
 
 # TODO
 
+## Easy Stuff
+
 * [X] Make sure to simulate NetConfig options ping/jitter/drop
+* [ ] change tick rate argument from Int32 to Int
+* [ ] Metrics.... remove EKG dependency but keep metrics
+* [ ] Fix all warnings
+
+## Hard Stuff
+
 * [ ] Clean shutdown and cleanup of threads
   * Simulated network condition threads
   * search for forkIO

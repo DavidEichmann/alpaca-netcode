@@ -20,7 +20,9 @@
 {-# LANGUAGE TypeFamilies #-}
 
 -- | Rollback and replay based game networking
-module Alpaca.NetCode.Core.Server where
+module Alpaca.NetCode.Core.Server
+  ( runServer
+  ) where
 
 import Control.Applicative
 import Control.Concurrent (forkIO, killThread, threadDelay)
@@ -50,7 +52,8 @@ data PlayerData = PlayerData
     lastMesgRcvTime :: Float
   }
 
-
+-- | Run a server for a single game. This will block until the game ends,
+-- specifically when all players have disconnected.
 runServer ::
   forall input clientAddress.
   (Eq input, Flat input, Show clientAddress, Ord clientAddress) =>
@@ -342,72 +345,3 @@ runServer sendToClient' recvFromClient' tickFreq netConfig input0 = playCommon t
   putStrLn "No more clients, Stopping game!"
 
   mapM_ killThread [msgProcessingTID, disconnectTID, simTID]
-
-
-{- TODO move to Alpaca.NetCode
-setupServer ::
-  forall input.
-  (Flat input) =>
-  -- | server port
-  Int ->
-  -- | Simulated ping, jitter, packet loss (see simulatedNetConditions)
-  Maybe (Float, Float, Float) ->
-  -- | ( send reliable (order NOT guaranteed)
-  --   , recv
-  --   )
-  -- | ( send reliable (order NOT guaranteed)
-  --   , recv
-  --   )
-  IO (TChan (NetMsg input, SockAddr), TChan (NetMsg input, SockAddr))
-setupServer port simNetConMay = do
-  sendChan <- newTChanIO
-  -- duplicatedSendChan <- newTChanIO
-  rcvChan <- newTChanIO
-
-  -- UDP
-  _ <- forkIO $ do
-    runUDPServer Nothing (show $ port) $ \sock -> do
-      _ <- forkIO $ writeDatagramContentsAsNetMsg Nothing id rcvChan sock
-      forever $ do
-        (msg, addr) <- atomically $ readTChan sendChan
-        NBS.sendAllTo sock (flat msg) addr
-
-  -- TCP
-  -- _ <- forkIO $
-  --   runTCPServer Nothing (show $ port) $ \sock -> do
-  --     _ <- forkIO $ writeStreamContentsAsNetMsg id rcvChan sock
-  --     onTCPConnect =<< getPeerName sock
-  --     forever $ do
-  --       (msg, addr) <- atomically $ readTChan duplicatedSendChan
-  --       let msgBS = flat msg
-  --           len :: StreamMsgHeader
-  --           len = fromIntegral $ BS.length msgBS
-  --       NBS.sendAllTo sock (flat len <> flat msg) addr
-
-  case simNetConMay of
-    -- No simulated network conditions
-    Nothing -> return (sendChan, rcvChan)
-    -- Simulate network conditions
-    Just (ping, jitter, loss) -> do
-      simSendChan <- newTChanIO
-      -- simduplicatedSendChan <- newTChanIO
-      simRcvChan <- newTChanIO
-      let simulateNetwork :: TChan a -> TChan a -> IO ThreadId
-          simulateNetwork inChan outChan = forkIO $
-            forever $ do
-              msg <- atomically $ readTChan inChan
-              r <- randomRIO (0, 1)
-              if r < loss
-                then return ()
-                else do
-                  jitterT <- randomRIO (negate jitter, jitter)
-                  let latency = max 0 ((ping / 2) + jitterT)
-                  _ <- forkIO $ do
-                    threadDelay (round $ latency * 1000000)
-                    atomically $ writeTChan outChan msg
-                  return ()
-      _ <- simulateNetwork simSendChan sendChan
-      -- _ <- simulateNetwork simduplicatedSendChan duplicatedSendChan
-      _ <- simulateNetwork rcvChan simRcvChan
-      return (simSendChan, simRcvChan)
--}

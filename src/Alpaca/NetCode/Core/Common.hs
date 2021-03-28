@@ -25,16 +25,12 @@
 module Alpaca.NetCode.Core.Common where
 
 import Control.Concurrent.STM as STM
-import qualified Data.ByteString as BS
-import qualified Data.ByteString.Lazy as BSL
 import qualified Data.List as L
 import Data.Map (Map)
 import qualified Data.Map as M
 import Data.Time.Clock
 import Data.Word (Word8)
 import Flat
-import Network.Socket
-import Network.Socket.ByteString as NBS
 import Prelude
 import System.Random (randomRIO)
 import Control.Concurrent (forkIO, threadDelay, newChan, writeChan, readChan)
@@ -46,9 +42,6 @@ import Control.Monad (when, forever)
 -- Note above, we don't actually step the simulation here. We leave
 -- that all up to the draw function. All we need to do is submit
 -- inputs once per tick to the server.
-
-serverPort :: Int
-serverPort = 8888
 
 
 -- | Seconds of silence to wait before disconnecting a player
@@ -272,42 +265,3 @@ fromCompactMaps (CompactMaps runs) =
   | (keys, valuess) <- runs
   , values <- valuess
   ]
-
-
--- Forever decode messages from the input socket using the given decoding
--- function and writing it to the given chan. Loops forever.
-writeDatagramContentsAsNetMsg ::
-  forall input a.
-  (Flat input) =>
-  -- | Just the sender if alwalys receiving from the same address (used in the client case where we only receive from the server)
-  (Maybe SockAddr) ->
-  -- | Decode the messages
-  ((NetMsg input, SockAddr) -> a) ->
-  -- | Write decoded msgs to this chan
-  TChan a ->
-  -- | Read from this socket
-  Socket ->
-  IO ()
-writeDatagramContentsAsNetMsg constSenderMay f chan sock = go
- where
-  go = do
-    let maxBytes = 4096
-    -- putStrLn "."  -- For some reason... adding in these 2 `putStrLn`s makes the thing run! Why? A race condition? A Threading issue?
-    (bs, sender) <- case constSenderMay of
-      Nothing -> NBS.recvFrom sock maxBytes
-      Just s -> (,s) <$> NBS.recv sock maxBytes
-    -- putStrLn "."
-    if BS.length bs == maxBytes
-      then error $ "TODO support packets bigger than " ++ show maxBytes ++ " bytes."
-      else
-        if BS.length bs == 0
-          then putStrLn "Received 0 bytes from socket. Stopping."
-          else do
-            case unflat @(NetMsg input) (BSL.fromStrict bs) of
-              Left err -> do
-                putStrLn $
-                  "Error decoding message: " ++ case err of
-                    BadEncoding env errStr -> "BadEncoding " ++ show env ++ "\n" ++ errStr
-                    _ -> show err
-              Right msg -> atomically $ writeTChan chan (f (msg, sender))
-            go

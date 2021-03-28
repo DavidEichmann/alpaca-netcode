@@ -22,7 +22,9 @@
 {-# LANGUAGE TypeFamilies #-}
 
 -- | Rollback and replay based game networking
-module Alpaca.NetCode.Core.Client where
+module Alpaca.NetCode.Core.Client
+  ( runClient
+  ) where
 
 import Control.Concurrent (forkIO, threadDelay)
 import Control.Concurrent.STM as STM
@@ -63,7 +65,7 @@ resyncThresholdTick = 500
 -- | Start a networked client!
 runClient ::
   forall w input.
-  (Eq input, Flat input) =>
+  Flat input =>
   -- | Function to send messages to the server. The underlying communication
   -- protocol need only guarantee data integrity but is otherwise free to drop
   -- and reorder packets. Typically this is backed by a UDP socket.
@@ -477,98 +479,3 @@ runClient sendToServer' rcvFromServer' tickFreq netConfig input0 stepOneTick wor
               return (sendToServer (Msg_SubmitInput targetTick newInput))
             else pure (return ())
     )
-
-{- TODO move to Alpaca.NetCode
-setupClient ::
-  (Flat input) =>
-  -- | Server address.
-  HostName ->
-  -- | Server port number.
-  Int ->
-  -- | Simulated ping, jitter, packet loss (see simulatedNetConditions)
-  Maybe (Float, Float, Float) ->
-  -- | ( send reliable (order NOT guaranteed)
-  --   , recv
-  --   )
-  IO (TChan (NetMsg input), TChan (NetMsg input))
-setupClient host port simNetConMay = do
-  sendChan <- newTChanIO
-  -- duplicatedSendChan <- newTChanIO
-  rcvChan <- newTChanIO
-
-  -- UDP
-  _ <- forkIO $ do
-    runUDPClient' host (show $ port) $ \sock server -> do
-      _ <- forkIO $ writeDatagramContentsAsNetMsg (Just server) fst rcvChan sock
-      forever $ do
-        msg <- atomically $ readTChan sendChan
-        NBS.sendAllTo sock (flat msg) server
-
-  -- TCP
-  -- _ <- forkIO $
-  --   runTCPClient host (show $ port) $ \sock -> do
-  --     _ <- forkIO $ writeStreamContentsAsNetMsg (fst) rcvChan sock
-  --     forever $ do
-  --       msg <- atomically $ readTChan duplicatedSendChan
-  --       NBS.sendAll sock (flat msg)
-
-  case simNetConMay of
-    -- No simulated network conditions
-    Nothing -> return (sendChan, rcvChan)
-    -- Simulate network conditions
-    Just (ping, jitter, loss) -> do
-      simSendChan <- newTChanIO
-      -- simduplicatedSendChan <- newTChanIO
-      simRcvChan <- newTChanIO
-      let simulateNetwork :: TChan a -> TChan a -> IO ThreadId
-          simulateNetwork inChan outChan = forkIO $
-            forever $ do
-              msg <- atomically $ readTChan inChan
-              r <- randomRIO (0, 1)
-              if r < loss
-                then return ()
-                else do
-                  jitterT <- randomRIO (negate jitter, jitter)
-                  let latency = max 0 ((ping / 2) + jitterT)
-                  _ <- forkIO $ do
-                    threadDelay (round $ latency * 1000000)
-                    atomically $ writeTChan outChan msg
-                  return ()
-      _ <- simulateNetwork simSendChan sendChan
-      -- _ <- simulateNetwork simduplicatedSendChan duplicatedSendChan
-      _ <- simulateNetwork rcvChan simRcvChan
-      return (simSendChan, simRcvChan)
-
-
---
--- Coppied from network-run
---
-
--- | Running a UDP client with a socket.
---   The client action takes a socket and
---   server's socket address.
---   They should be used with 'sendTo'.
-runUDPClient' :: HostName -> ServiceName -> (Socket -> SockAddr -> IO a) -> IO a
-runUDPClient' host port client = withSocketsDo $ do
-  addr <- resolve Datagram (Just host) port False
-  let sockAddr = addrAddress addr
-  E.bracket (openSocket addr) close $ \sock -> client sock sockAddr
-
-
-resolve :: SocketType -> Maybe HostName -> ServiceName -> Bool -> IO AddrInfo
-resolve socketType mhost port passive =
-  head <$> getAddrInfo (Just hints) mhost (Just port)
- where
-  hints =
-    defaultHints
-      { addrSocketType = socketType
-      , addrFlags = if passive then [AI_PASSIVE] else []
-      }
-
-
-openSocket :: AddrInfo -> IO Socket
-openSocket addr = do
-  sock <- socket (addrFamily addr) (addrSocketType addr) (addrProtocol addr)
-  connect sock (addrAddress addr)
-  return sock
--}
