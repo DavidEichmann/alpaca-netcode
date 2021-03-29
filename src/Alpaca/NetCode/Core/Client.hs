@@ -153,13 +153,13 @@ runClient ::
   -- | A deterministic stepping function (for a single tick). Must be the same
   -- across all clients and the server. Takes:
   --
-  -- * a map from PlayerId to (previous, current) input.
+  -- * a map from PlayerId to current input.
   -- * current game tick.
   -- * previous tick's world state
   --
   -- It is important that this is deterministic else clients' states will
   -- diverge. Beware of floating point non-determinism!
-  ( M.Map PlayerId (input, input) ->
+  ( M.Map PlayerId input ->
     Tick ->
     world ->
     world
@@ -465,16 +465,8 @@ runClient sendToServer' rcvFromServer' simNetConditionsMay clientConfig input0 w
                     let inputsNextHintPart = fromMaybe M.empty (hintInputs IM.!? (fromIntegral tickNext)) -- partial hint inputs
                         inputsNextHintFilled = inputsNextHintPart `M.union` tickInputs -- hint input (filled with previous input)
                         inputsNext = fromMaybe inputsNextHintFilled inputsNextAuthMay
+                        wNext = stepOneTick inputsNext tickNext world
 
-                        zippedInputs =
-                          M.mapWithKey
-                            ( \playerId newInput ->
-                                let oldInput = fromMaybe input0 (tickInputs M.!? playerId)
-                                 in (oldInput, newInput)
-                            )
-                            inputsNext
-
-                    let wNext = stepOneTick zippedInputs tickNext world
                     when isWNextAuth $
                       atomically $ modifyTVar authWorldsTVar (IM.insert (fromIntegral tickNext) wNext)
 

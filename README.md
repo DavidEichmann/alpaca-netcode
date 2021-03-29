@@ -48,7 +48,7 @@ Run Client:
     * Remove NetConfig + Server doesn't need NetConfig.inputLatency
 * [X] refactor: Make a record for Client to return from runClient
 * [X] Remove debug print statements
-* [ ] Only put current (not previous) input in the world step function's inputs
+* [X] Only put current (not previous) input in the world step function's inputs
   arg.
 * [ ] Review documentation
     * blocking behaviour of all IO functions / IO function arguments

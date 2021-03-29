@@ -103,13 +103,13 @@ runClient ::
   -- | A deterministic stepping function (for a single tick). Must be the same
   -- across all clients and the server. Takes:
   --
-  -- * a map from PlayerId to (previous, current) input.
+  -- * a map from PlayerId to current input.
   -- * current game tick.
   -- * previous tick's world state
   --
   -- It is important that this is deterministic else clients' states will
   -- diverge. Beware of floating point non-determinism!
-  ( M.Map Core.PlayerId (input, input) ->
+  ( M.Map Core.PlayerId input ->
     Core.Tick ->
     world ->
     world

@@ -33,13 +33,13 @@ main = defaultMain $ testGroup "alpaca-netcode" [ testCase "2 Clients equal Auth
   inputLatency = 0.1
 
   -- Step of the world does a simple hashes all the inputs.
-  stepWorld :: Map PlayerId (Int64, Int64) -> Tick -> (Int64, Int64) -> (Int64, Int64)
+  stepWorld :: Map PlayerId Int64 -> Tick -> (Int64, Int64) -> (Int64, Int64)
   stepWorld playerInputs (Tick t) (_numPlayersOld, hash) =
     ( fromIntegral $ M.size playerInputs
     , foldl'
       (\hash' x -> (shiftL hash' 1) `xor` x)
       (shiftL hash 1 `xor` t)
-      (concat [[fromIntegral i, j, k] | (PlayerId i, (j, k)) <- M.toList playerInputs])
+      (concat [[fromIntegral i, j] | (PlayerId i, j) <- M.toList playerInputs])
     )
 
   -- (number of players on this tick, hash over past states/inputs)
