@@ -44,20 +44,21 @@ Run Client:
 * [X] change tick rate argument from Int32 to Int64
 * [NO] Expose only Int64 instead of Tick
 * [ ] Fix all warnings
-* [X] cleanup arguments for runClient/Server
+* [X] cleanup arguments for runClientWith/Server
     * Remove NetConfig + Server doesn't need NetConfig.inputLatency
-* [X] refactor: Make a record for Client to return from runClient
+* [X] refactor: Make a record for Client to return from runClientWith
 * [X] Remove debug print statements
 * [X] Only put current (not previous) input in the world step function's inputs
   arg.
 * [ ] Review documentation
     * blocking behaviour of all IO functions / IO function arguments
-* [ ] Core runServer signature includes NetMsg, but we don't export NetMsg and
+* [X] Core runServerWith signature includes NetMsg, but we don't export NetMsg and
   don't really want to. I think we can just export it as an abstract type with
   Flat instance from Alpaca.NetCode.Core
 * Remove `text` dependency. It is only used for EKG label output
-* [ ]  use defaults in runClient/Server and take configs in runClient/ServerWith.
+* [X] Use defaults in runClientWith/Server and take configs in runClientWith/ServerWith.
 * [ ] Add a `input -> input` prediction parameter to the server?
+* [ ] Document `Tick` with basic properties of how it works
 
 ## Medium
 

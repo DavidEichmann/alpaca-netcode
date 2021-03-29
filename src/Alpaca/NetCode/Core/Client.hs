@@ -24,6 +24,7 @@
 -- | Rollback and replay based game networking
 module Alpaca.NetCode.Core.Client
   ( runClient
+  , runClientWith
   , ClientConfig (..)
   , defaultClientConfig
   , Client
@@ -54,7 +55,7 @@ import Text.Read
 import Alpaca.NetCode.Core.ClockSync
 import Alpaca.NetCode.Core.Common
 
--- | A Client. You'll generally obtain this via @Alpaca.NetCode.runClient@.
+-- | A Client. You'll generally obtain this via @Alpaca.NetCode.runClientWith@.
 data Client world input = Client
   { -- | The client's @PlayerId@
     clientPlayerId :: PlayerId
@@ -128,9 +129,61 @@ defaultClientConfig tickRate = ClientConfig
   , ccResyncThresholdTicks = tickRate * 3
   }
 
--- | Start a networked client. This blocks until the initial handshake with the
+-- | Start a client. This blocks until the initial handshake with the
 -- server is finished.
 runClient ::
+  forall world input.
+  Flat input =>
+  -- | Function to send messages to the server. The underlying communication
+  -- protocol need only guarantee data integrity but is otherwise free to drop
+  -- and reorder packets. Typically this is backed by a UDP socket.
+  (NetMsg input -> IO ()) ->
+  -- | Chan to receive messages from the server. Has the same requirements as
+  -- the send TChan.
+  (IO (NetMsg input)) ->
+  -- | Tick rate (ticks per second). Must be the same across all clients and the
+  -- server. Packet rate and hence network bandwidth will scale linearly with
+  -- this the tick rate.
+  Int ->
+  -- | Initial input for new players. Must be the same across all clients and
+  -- the server.
+  input ->
+  -- | Initial world state. Must be the same across all clients.
+  world ->
+  -- | A deterministic stepping function (for a single tick). Must be the same
+  -- across all clients and the server. Takes:
+  --
+  -- * a map from PlayerId to current input.
+  -- * current game tick.
+  -- * previous tick's world state
+  --
+  -- It is important that this is deterministic else clients' states will
+  -- diverge. Beware of floating point non-determinism!
+  ( M.Map PlayerId input ->
+    Tick ->
+    world ->
+    world
+  ) ->
+  IO (Client world input)
+runClient
+  sendToServer'
+  rcvFromServer'
+  tickRate
+  input0
+  world0
+  stepOneTick
+  = runClientWith
+      sendToServer'
+      rcvFromServer'
+      Nothing
+      (defaultClientConfig tickRate)
+      input0
+      world0
+      stepOneTick
+
+-- | Start a client. This blocks until the initial handshake with the
+-- server is finished.
+runClientWith ::
   forall world input.
   Flat input =>
   -- | Function to send messages to the server. The underlying communication
@@ -165,7 +218,7 @@ runClient ::
     world
   ) ->
   IO (Client world input)
-runClient sendToServer' rcvFromServer' simNetConditionsMay clientConfig input0 world0 stepOneTick = playCommon (ccTickRate clientConfig) $ \tickTime getTime _resetTime -> do
+runClientWith sendToServer' rcvFromServer' simNetConditionsMay clientConfig input0 world0 stepOneTick = playCommon (ccTickRate clientConfig) $ \tickTime getTime _resetTime -> do
   (sendToServer, rcvFromServer) <- simulateNetConditions
     sendToServer'
     rcvFromServer'

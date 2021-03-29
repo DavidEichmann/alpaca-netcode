@@ -58,7 +58,7 @@ main = defaultMain $ testGroup "alpaca-netcode" [ testCase "2 Clients equal Auth
       toClient1 <- newChan
 
       -- Run a server
-      tidServer <- forkIO $ runServer
+      tidServer <- forkIO $ runServerWith
         (\msg (client :: Int64) -> case client of
           0 -> writeChan toClient0 msg
           1 -> writeChan toClient1 msg
@@ -70,7 +70,7 @@ main = defaultMain $ testGroup "alpaca-netcode" [ testCase "2 Clients equal Auth
         initialInput
 
       -- A client with Perfect network conditions
-      client0 <- runClient
+      client0 <- runClientWith
         (\msg -> writeChan toServer (msg, 0))
         (readChan toClient0)
         Nothing
@@ -81,7 +81,7 @@ main = defaultMain $ testGroup "alpaca-netcode" [ testCase "2 Clients equal Auth
       tid0 <- simulateClient (clientSetInput client0)
 
       -- A client with very poor network conditions
-      client1 <- runClient
+      client1 <- runClientWith
         (\msg -> writeChan toServer (msg, 1))
         (readChan toClient1)
         (Just (SimNetConditions 0.2 0.1 0.5))

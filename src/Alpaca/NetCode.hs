@@ -23,10 +23,12 @@
 module Alpaca.NetCode
   ( -- * Server
     runServer,
+    runServerWith,
     Core.ServerConfig (..),
     Core.defaultServerConfig,
     -- * Client
     runClient,
+    runClientWith,
     Core.ClientConfig (..),
     Core.defaultClientConfig,
     -- * Common Types
@@ -81,9 +83,58 @@ import Network.Socket (
  )
 import qualified Network.Socket.ByteString as NBS
 
--- | Start a networked client. This blocks until the initial handshake with the
--- server is finished.
+-- | Start a client. This blocks until the initial handshake with the server is
+-- finished.
 runClient ::
+  forall world input.
+  Flat input =>
+  -- | The server's host name or IP address @String@.
+  HostName ->
+  -- | The server's port number.
+  Int64 ->
+  -- | Tick rate (ticks per second). Must be the same across all clients and the
+  -- server. Packet rate and hence network bandwidth will scale linearly with
+  -- this the tick rate.
+  Int ->
+  -- | Initial input for new players. Must be the same across all clients and
+  -- the server.
+  input ->
+  -- | Initial world state. Must be the same across all clients.
+  world ->
+  -- | A deterministic stepping function (for a single tick). Must be the same
+  -- across all clients and the server. Takes:
+  --
+  -- * a map from PlayerId to current input.
+  -- * current game tick.
+  -- * previous tick's world state
+  --
+  -- It is important that this is deterministic else clients' states will
+  -- diverge. Beware of floating point non-determinism!
+  ( M.Map Core.PlayerId input ->
+    Core.Tick ->
+    world ->
+    world
+  ) ->
+  IO (Core.Client world input)
+runClient
+  serverHostName
+  serverPort
+  tickRate
+  input0
+  world0
+  stepOneTick
+  = runClientWith
+      serverHostName
+      serverPort
+      Nothing
+      (Core.defaultClientConfig tickRate)
+      input0
+      world0
+      stepOneTick
+
+-- | Start a client. This blocks until the initial handshake with the server is
+-- finished.
+runClientWith ::
   forall world input.
   Flat input =>
   -- | The server's host name or IP address @String@.
@@ -115,7 +166,7 @@ runClient ::
     world
   ) ->
   IO (Core.Client world input)
-runClient
+runClientWith
   serverHostName
   serverPort
   simNetConditionsMay
@@ -136,7 +187,7 @@ runClient
           msg <- readChan sendChan
           NBS.sendAllTo sock (flat msg) server
 
-    Core.runClient
+    Core.runClientWith
       (writeChan sendChan)
       (readChan recvChan)
       simNetConditionsMay
@@ -173,10 +224,33 @@ runClient
     connect sock (addrAddress addr)
     return sock
 
-{- | Run a server for a single game. This will block until the game ends,
- specifically when all players have disconnected.
--}
+-- | Run a server for a single game. This will block until the game ends,
+-- specifically when all players have disconnected.
 runServer ::
+  forall input.
+  (Eq input, Flat input) =>
+  -- | The server's port number.
+  Int64 ->
+  -- | Tick rate (ticks per second). Must be the same across all clients and the
+  -- server. Packet rate and hence network bandwidth will scale linearly with
+  -- this the tick rate.
+  Int ->
+  -- | Initial input for new players. Must be the same across all host/clients.
+  input ->
+  IO ()
+runServer
+  port
+  tickRate
+  input0
+  = runServerWith
+      port
+      Nothing
+      (Core.defaultServerConfig tickRate)
+      input0
+
+-- | Run a server for a single game. This will block until the game ends,
+-- specifically when all players have disconnected.
+runServerWith ::
   forall input.
   (Eq input, Flat input) =>
   -- | The server's port number.
@@ -189,7 +263,7 @@ runServer ::
   -- | Initial input for new players. Must be the same across all host/clients.
   input ->
   IO ()
-runServer port tickFreq netConfig input0 = do
+runServerWith port tickRate netConfig input0 = do
   sendChan <- newChan
   recvChan <- newChan
 
@@ -201,10 +275,10 @@ runServer port tickFreq netConfig input0 = do
         (msg, addr) <- readChan sendChan
         NBS.sendAllTo sock (flat msg) addr
 
-  Core.runServer
+  Core.runServerWith
     (curry (writeChan sendChan))
     (readChan recvChan)
-    tickFreq
+    tickRate
     netConfig
     input0
 

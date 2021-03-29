@@ -22,6 +22,7 @@
 -- | Rollback and replay based game networking
 module Alpaca.NetCode.Core.Server
   ( runServer
+  , runServerWith
   , ServerConfig (..)
   , defaultServerConfig
   ) where
@@ -82,6 +83,40 @@ runServer ::
   -- | Chan to receive messages from clients. Has the same requirements as
   -- the send TChan.
   (IO (NetMsg input, clientAddress)) ->
+  -- | Tick rate (ticks per second). Must be the same across all clients and the
+  -- server. Packet rate and hence network bandwidth will scale linearly with
+  -- this the tick rate.
+  Int ->
+  -- | Initial input for new players.
+  input ->
+  IO ()
+runServer sendToClient'
+  recvFromClient'
+  tickRate
+  input0
+  = runServerWith
+      sendToClient'
+      recvFromClient'
+      Nothing
+      (defaultServerConfig tickRate)
+      input0
+
+-- | Run a server for a single game. This will block until the game ends,
+-- specifically when all players have disconnected.
+runServerWith ::
+  forall input clientAddress.
+  ( Eq input
+  , Flat input
+  , Show clientAddress
+  , Ord clientAddress
+  ) =>
+  -- | Function to send messages to clients. The underlying communication
+  -- protocol need only guarantee data integrity but is otherwise free to drop
+  -- and reorder packets. Typically this is backed by a UDP socket.
+  (NetMsg input -> clientAddress -> IO ()) ->
+  -- | Chan to receive messages from clients. Has the same requirements as
+  -- the send TChan.
+  (IO (NetMsg input, clientAddress)) ->
   -- | Optional simulation of network conditions. In production this should be
   -- `Nothing`. May differ between clients.
   Maybe SimNetConditions ->
@@ -90,7 +125,7 @@ runServer ::
   -- | Initial input for new players.
   input ->
   IO ()
-runServer sendToClient' recvFromClient' simNetConditionsMay serverConfig input0 = playCommon (scTickRate serverConfig) $ \tickTime getTime resetTime -> forever $ do
+runServerWith sendToClient' recvFromClient' simNetConditionsMay serverConfig input0 = playCommon (scTickRate serverConfig) $ \tickTime getTime resetTime -> forever $ do
   (sendToClient'', recvFromClient) <- simulateNetConditions
     (uncurry sendToClient')
     recvFromClient'
