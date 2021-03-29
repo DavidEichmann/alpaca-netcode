@@ -76,6 +76,7 @@ type Time = Float -- seconds
 type Duration = Float -- seconds
 
 
+-- | The game is broken into discrete ticks starting from 0.
 newtype Tick = Tick Int64
   deriving stock (Show)
   deriving newtype (Eq, Ord, Num, Enum, Real, Integral, Flat)

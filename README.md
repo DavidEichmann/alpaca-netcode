@@ -73,4 +73,6 @@ Run Client:
 * [ ] Clean shutdown and cleanup of threads
   * Simulated network condition threads
   * search for forkIO
-* [ ] Add duplication in Msg_SubmitInputs to better handle packet loss!
+* [ ] Add duplication (include previously submitted inputs) in Msg_SubmitInputs
+  to better handle packet loss!
+* [ ] Remove Msg_RequestAuthInput

@@ -21,26 +21,31 @@
 
 -- | Rollback and replay based game networking
 module Alpaca.NetCode
-  ( -- * Server
+  ( -- * Simplified API
+    -- | This should be all you need to get started. See the extended API below
+    -- if you'd like to further configure things.
     runServer,
-    runServerWith,
-    Core.ServerConfig (..),
-    Core.defaultServerConfig,
-    -- * Client
     runClient,
-    runClientWith,
-    Core.ClientConfig (..),
-    Core.defaultClientConfig,
-    -- * Common Types
-    Core.SimNetConditions (..),
+    -- ** Types
     Core.Tick (..),
     Core.PlayerId (..),
     HostName,
+    ServiceName,
+    -- * Extended API
+    -- ** Server
+    runServerWith,
+    Core.ServerConfig (..),
+    Core.defaultServerConfig,
+    -- ** Client
+    runClientWith,
+    Core.ClientConfig (..),
+    Core.defaultClientConfig,
+    -- ** Types
+    Core.SimNetConditions (..),
   ) where
 
 import qualified Alpaca.NetCode.Core as Core
 import Alpaca.NetCode.Core.Common
-import Data.Int (Int64)
 import Control.Concurrent (
   Chan,
   forkIO,
@@ -88,10 +93,10 @@ import qualified Network.Socket.ByteString as NBS
 runClient ::
   forall world input.
   Flat input =>
-  -- | The server's host name or IP address @String@.
+  -- | The server's host name or IP address.
   HostName ->
-  -- | The server's port number.
-  Int64 ->
+  -- | The server's port number e.g. @"8111"@.
+  ServiceName ->
   -- | Tick rate (ticks per second). Must be the same across all clients and the
   -- server. Packet rate and hence network bandwidth will scale linearly with
   -- this the tick rate.
@@ -137,10 +142,10 @@ runClient
 runClientWith ::
   forall world input.
   Flat input =>
-  -- | The server's host name or IP address @String@.
+  -- | The server's host name or IP address.
   HostName ->
   -- | The server's port number.
-  Int64 ->
+  ServiceName ->
   -- | Optional simulation of network conditions. In production this should be
   -- `Nothing`. May differ between clients.
   Maybe SimNetConditions ->
@@ -179,7 +184,7 @@ runClientWith
 
     -- UDP
     _ <- forkIO $ do
-      runUDPClient' serverHostName (show serverPort) $ \sock server -> do
+      runUDPClient' serverHostName serverPort $ \sock server -> do
         _ <-
           forkIO $
             writeDatagramContentsAsNetMsg (Just server) fst recvChan sock
@@ -230,7 +235,7 @@ runServer ::
   forall input.
   (Eq input, Flat input) =>
   -- | The server's port number.
-  Int64 ->
+  ServiceName ->
   -- | Tick rate (ticks per second). Must be the same across all clients and the
   -- server. Packet rate and hence network bandwidth will scale linearly with
   -- this the tick rate.
@@ -239,11 +244,11 @@ runServer ::
   input ->
   IO ()
 runServer
-  port
+  serverPort
   tickRate
   input0
   = runServerWith
-      port
+      serverPort
       Nothing
       (Core.defaultServerConfig tickRate)
       input0
@@ -254,7 +259,7 @@ runServerWith ::
   forall input.
   (Eq input, Flat input) =>
   -- | The server's port number.
-  Int64 ->
+  ServiceName ->
   -- | Optional simulation of network conditions. In production this should be
   -- `Nothing`.
   Maybe SimNetConditions ->
@@ -263,13 +268,13 @@ runServerWith ::
   -- | Initial input for new players. Must be the same across all host/clients.
   input ->
   IO ()
-runServerWith port tickRate netConfig input0 = do
+runServerWith serverPort tickRate netConfig input0 = do
   sendChan <- newChan
   recvChan <- newChan
 
   -- UDP
   _ <- forkIO $ do
-    runUDPServer Nothing (show $ port) $ \sock -> do
+    runUDPServer Nothing serverPort $ \sock -> do
       _ <- forkIO $ writeDatagramContentsAsNetMsg Nothing id recvChan sock
       forever $ do
         (msg, addr) <- readChan sendChan
