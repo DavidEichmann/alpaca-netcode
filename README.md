@@ -20,7 +20,7 @@
 * [X] Document `Tick` with basic properties of how it works
 * [X] EKG dependency + Metrics
 * [X] Fix all warnings
-* [ ] `Tick` probably shouldn't be an instance of `Semigroup`
+* [X] `Tick` probably shouldn't be an instance of `Semigroup`
 * [ ] Review documentation
 
 ## Medium

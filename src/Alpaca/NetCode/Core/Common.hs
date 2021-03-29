@@ -82,12 +82,6 @@ newtype Tick = Tick Int64
   deriving newtype (Eq, Ord, Num, Enum, Real, Integral, Flat)
 
 
-instance Monoid Tick where mempty = Tick 0
-
-
-instance Semigroup Tick where (<>) = (+)
-
-
 newtype PlayerId = PlayerId {unPlayerId :: Word8}
   deriving stock (Show)
   deriving newtype (Eq, Ord, Num)
