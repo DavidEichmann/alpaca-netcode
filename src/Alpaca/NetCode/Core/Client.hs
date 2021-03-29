@@ -29,9 +29,8 @@ module Alpaca.NetCode.Core.Client
 import Control.Concurrent (forkIO, threadDelay)
 import Control.Concurrent.STM as STM
 import Control.Monad
-import Data.Coerce (coerce)
 import qualified Data.IORef as IORef
-import Data.Int (Int32)
+import Data.Int (Int64)
 import Data.IntMap (IntMap)
 import qualified Data.IntMap as IM
 import qualified Data.Map as M
@@ -51,14 +50,14 @@ import Alpaca.NetCode.Core.Common
 
 -- | Maximum number of ticks to predict. If the client is this many ticks behind
 -- the target tick, it will simply stop at an earlier tick.
-maxPredictionTicks :: Int
+maxPredictionTicks :: Int64
 maxPredictionTicks = 40
 
 
 -- | If the client's latest auth world is this many ticks behind the target
 -- tick, no prediction will be done at all. We want to safe CPU cycles for
 -- catching up with the server.
-resyncThresholdTick :: Int
+resyncThresholdTick :: Int64
 resyncThresholdTick = 500
 
 
@@ -74,7 +73,7 @@ runClient ::
   -- the send TChan.
   (IO (NetMsg input)) ->
   -- | Ticks per second. Must be the same across all clients and the server.
-  Int32 ->
+  Int64 ->
   -- | Network options
   NetConfig ->
   -- | Initial input for new players.
@@ -85,7 +84,7 @@ runClient ::
   -- * current game tick.
   -- * previous tick's world state
   (M.Map PlayerId (input, input) -> Tick -> w -> w) ->
-  -- | Initial world state.
+  -- | Initial world state. Must be the same across all clients.
   w ->
   IO
     ( PlayerId
@@ -203,7 +202,7 @@ runClient sendToServer' rcvFromServer' tickFreq netConfig input0 stepOneTick wor
                       authInputs <- readTVar authInputsTVar
                       let maxAuthTickBroken = fst $ IM.findMax authInputs
                       Tick maxAuthTick <- readTVar maxAuthTickTVar
-                      let missingAuthInputTicks = length $ filter (`IM.member` authInputs) [maxAuthTick .. maxAuthTickBroken]
+                      let missingAuthInputTicks = length $ filter (`IM.member` authInputs) [fromIntegral maxAuthTick .. maxAuthTickBroken]
                       authWorlds <- readTVar authWorldsTVar
                       let maxAuthWorldTick = fst $ IM.findMax authWorlds
                       return $ do
@@ -294,16 +293,16 @@ runClient sendToServer' rcvFromServer' tickFreq netConfig input0 stepOneTick wor
             sendToServer ackMsg
 
             -- Save new auth inputs
-            let newAuthTickHi = headTick + Tick (length authInputss)
+            let newAuthTickHi = headTick + Tick (fromIntegral $ length authInputss)
             resMsg <- forM (zip [headTick ..] authInputss) $ \(tick, inputs) -> do
               atomically $ do
                 authInputs <- readTVar authInputsTVar
                 -- when (tickInt `mod` 100 == 0) (putStrLn $ "Received auth tick: " ++ show tickInt)
-                case authInputs IM.!? coerce tick of
+                case authInputs IM.!? fromIntegral tick of
                   Just _ -> return $ Just $ "Received a duplicate Msg_AuthInput for " ++ show tick ++ ". Ignoring."
                   Nothing -> do
                     -- New auth inputs
-                    writeTVar authInputsTVar (IM.insert (coerce tick) inputs authInputs)
+                    writeTVar authInputsTVar (IM.insert (fromIntegral tick) inputs authInputs)
                     return (Just $ "Got auth-inputs for " ++ show tick)
 
             -- Save new hint inputs, Excluding my own!
@@ -318,22 +317,22 @@ runClient sendToServer' rcvFromServer' tickFreq netConfig input0 stepOneTick wor
                             Just (M.restrictKeys oldHintinputs (S.singleton myPlayerId) <> newHintinputs <> oldHintinputs)
                         _ -> Just newHintinputs
                     )
-                    (coerce tick)
+                    (fromIntegral tick)
 
             -- Request any missing inputs
             authInputs <- atomically $ readTVar authInputsTVar
             authWorlds <- atomically $ readTVar authWorldsTVar
             let (loTickInt, _) = fromMaybe (error "Impossible! must have at least initial world") (IM.lookupMax authWorlds)
                 (hiTickInt, _) = fromMaybe (error "Impossible! must have at least initial inputs") (IM.lookupMax authInputs)
-                missingTicks = Tick <$> take maxRequestAuthInputs (filter (flip IM.notMember authInputs) [loTickInt + 1 .. hiTickInt - 1])
+                missingTicks = Tick . fromIntegral <$> take (fromIntegral maxRequestAuthInputs) (filter (flip IM.notMember authInputs) [loTickInt + 1 .. hiTickInt - 1])
             when (not (null missingTicks)) $ sendToServer (Msg_RequestAuthInput missingTicks)
             return resMsg
           mapM_ debugStrLn (catMaybes resMsgs)
         Msg_HintInput tick playerId inputs -> do
           res <- atomically $ do
             hintInputs <- readTVar hintInputsTVar
-            let hintInputsAtTick = fromMaybe M.empty (hintInputs IM.!? coerce tick)
-            writeTVar hintInputsTVar (IM.insert (coerce tick) (M.insert playerId inputs hintInputsAtTick) hintInputs)
+            let hintInputsAtTick = fromMaybe M.empty (hintInputs IM.!? fromIntegral tick)
+            writeTVar hintInputsTVar (IM.insert (fromIntegral tick) (M.insert playerId inputs hintInputsAtTick) hintInputs)
             return (Just $ "Got hint-inputs for " ++ show tick)
           mapM_ debugStrLn res
 
@@ -371,7 +370,7 @@ runClient sendToServer' rcvFromServer' tickFreq netConfig input0 stepOneTick wor
         (inputs, hintInputs, startTickInt, startWorld) <- atomically $ do
           (startTickInt, startWorld) <-
             fromMaybe (error $ "No authoritative world found <= " ++ show targetTick) -- We have at least the initial world
-              . IM.lookupLE (coerce targetTick)
+              . IM.lookupLE (fromIntegral targetTick)
               <$> readTVar authWorldsTVar
           inputs <- readTVar authInputsTVar
           hintInputs <- readTVar hintInputsTVar
@@ -380,10 +379,10 @@ runClient sendToServer' rcvFromServer' tickFreq netConfig input0 stepOneTick wor
               fromMaybe
                 (error $ "Have auth world but no authoritative inputs at " ++ show startTick) -- We assume that we always have auth inputs on ticks where we have auth worlds.
                 (IM.lookup startTickInt inputs)
-            startTick = Tick startTickInt
+            startTick = Tick (fromIntegral startTickInt)
 
             predict ::
-              Int -> -- How many ticks of prediction to allow
+              Int64 -> -- How many ticks of prediction to allow
               Tick -> -- Some tick i
               M.Map PlayerId input -> -- inputs at tick i
               w -> -- world at tick i if simulated
@@ -393,12 +392,12 @@ runClient sendToServer' rcvFromServer' tickFreq netConfig input0 stepOneTick wor
               LT -> do
                 let tickNext = tick + 1
 
-                    inputsNextAuthMay = inputs IM.!? (coerce tickNext) -- auth input
+                    inputsNextAuthMay = inputs IM.!? (fromIntegral tickNext) -- auth input
                     isInputsNextAuth = isJust inputsNextAuthMay
                     isWNextAuth = isWAuth && isInputsNextAuth
                 if isWNextAuth || predictionAllowance > 0
                   then do
-                    let inputsNextHintPart = fromMaybe M.empty (hintInputs IM.!? (coerce tickNext)) -- partial hint inputs
+                    let inputsNextHintPart = fromMaybe M.empty (hintInputs IM.!? (fromIntegral tickNext)) -- partial hint inputs
                         inputsNextHintFilled = inputsNextHintPart `M.union` tickInputs -- hint input (filled with previous input)
                         inputsNext = fromMaybe inputsNextHintFilled inputsNextAuthMay
 
@@ -412,7 +411,7 @@ runClient sendToServer' rcvFromServer' tickFreq netConfig input0 stepOneTick wor
 
                     let wNext = stepOneTick zippedInputs tickNext w
                     when isWNextAuth $
-                      atomically $ modifyTVar authWorldsTVar (IM.insert (coerce tickNext) wNext)
+                      atomically $ modifyTVar authWorldsTVar (IM.insert (fromIntegral tickNext) wNext)
 
                     let predictionAllowance' = if isWNextAuth then predictionAllowance else predictionAllowance - 1
                     predict predictionAllowance' tickNext inputsNext wNext isWNextAuth
@@ -447,9 +446,9 @@ runClient sendToServer' rcvFromServer' tickFreq netConfig input0 stepOneTick wor
         newAuthWorlds :: [w] <- atomically $ do
           lastSampledAuthWorldTick <- readTVar lastSampledAuthWorldTickTVar
           authWorlds <- readTVar authWorldsTVar
-          let latestAuthWorldTick = Tick $ fst $ IM.findMax authWorlds
+          let latestAuthWorldTick = Tick $ fromIntegral $ fst $ IM.findMax authWorlds
           writeTVar lastSampledAuthWorldTickTVar latestAuthWorldTick
-          return ((authWorlds IM.!) . coerce <$> [lastSampledAuthWorldTick + 1 .. latestAuthWorldTick])
+          return ((authWorlds IM.!) . fromIntegral <$> [lastSampledAuthWorldTick + 1 .. latestAuthWorldTick])
 
         return (newAuthWorlds, predictedTargetW)
     , -- Handle events. We submit events as soon as we expect that the
@@ -473,7 +472,7 @@ runClient sendToServer' rcvFromServer' tickFreq netConfig input0 stepOneTick wor
               modifyTVar hintInputsTVar
                 $ IM.alter
                     (Just . M.insert myPlayerId newInput . fromMaybe M.empty)
-                    (coerce targetTick)
+                    (fromIntegral targetTick)
 
               -- TODO we need to duplicate send to protect from dropped packets)
               return (sendToServer (Msg_SubmitInput targetTick newInput))

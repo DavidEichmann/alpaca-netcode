@@ -35,6 +35,7 @@ import Prelude
 import System.Random (randomRIO)
 import Control.Concurrent (forkIO, threadDelay, newChan, writeChan, readChan)
 import Control.Monad (when, forever)
+import Data.Int (Int64)
 
 
 -- Constants
@@ -77,7 +78,7 @@ type Time = Float -- seconds
 type Duration = Float -- seconds
 
 
-newtype Tick = Tick Int
+newtype Tick = Tick Int64
   deriving stock (Show)
   deriving newtype (Eq, Ord, Num, Enum, Real, Integral, Flat)
 
@@ -112,7 +113,7 @@ data NetConfig = NetConfig
     simulatedNetConditions :: Maybe (Float, Float, Float)
     -- -- | number of times to duplicate unreliable messages (e.g. input messages)
     -- -- to make them more reliable.
-    -- msgDuplication :: Int
+    -- msgDuplication :: Int64
   }
 
 

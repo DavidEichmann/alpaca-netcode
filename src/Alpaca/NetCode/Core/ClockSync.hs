@@ -22,10 +22,11 @@
 -- | Rollback and replay based game networking
 module Alpaca.NetCode.Core.ClockSync where
 
+import Alpaca.NetCode.Core.Common
 import Control.Concurrent.STM
 import Data.Maybe (fromMaybe)
 
-import Alpaca.NetCode.Core.Common
+import Data.Int (Int64)
 
 -- Min/Max Time dilation. This is the maximum speedup of our own clock that
 -- we'll allow to catch up to the estimated server clock. Note that the min is
@@ -73,7 +74,7 @@ csEstOffsetAndDrift (ClockSync {csTimingSamples = xs})
     avgServer = avg (fst <$> xs)
     avgClient = avg (snd <$> xs)
     slopNumer = sum [(s - avgServer) * (c - avgClient) | (s, c) <- xs]
-    slopDenom = sum [(c - avgClient) ^ (2 :: Int) | (_, c) <- xs]
+    slopDenom = sum [(c - avgClient) ^ (2 :: Int64) | (_, c) <- xs]
     slope = slopNumer / slopDenom
     offset = avgServer - (slope * avgClient)
 

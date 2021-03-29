@@ -13,6 +13,7 @@ import Data.Bits
 import Data.Map (Map)
 import Data.Maybe (isNothing)
 import qualified Data.Map as M
+import Data.Int (Int64)
 import System.Random (randomIO)
 import System.Timeout (timeout)
 
@@ -25,16 +26,16 @@ main = defaultMain $ testGroup "alpaca-netcode" [ testCase "2 Clients equal Auth
   tickRate = 1000
   tickRate32 = fromIntegral 1000
 
-  initialInput :: Int
+  initialInput :: Int64
   initialInput = 123456789
 
   inputLatency :: Float
   inputLatency = 0.1
 
   -- Step of the world does a simple hashes all the inputs.
-  stepWorld :: Map PlayerId (Int, Int) -> Tick -> (Int, Int) -> (Int, Int)
+  stepWorld :: Map PlayerId (Int64, Int64) -> Tick -> (Int64, Int64) -> (Int64, Int64)
   stepWorld playerInputs (Tick t) (_numPlayersOld, hash) =
-    ( M.size playerInputs
+    ( fromIntegral $ M.size playerInputs
     , foldl'
       (\hash' x -> (shiftL hash' 1) `xor` x)
       (shiftL hash 1 `xor` t)
@@ -42,10 +43,10 @@ main = defaultMain $ testGroup "alpaca-netcode" [ testCase "2 Clients equal Auth
     )
 
   -- (number of players on this tick, hash over past states/inputs)
-  initialWorld :: (Int, Int)
+  initialWorld :: (Int64, Int64)
   initialWorld = (0, 12345654321)
 
-  simulateClient :: (Int -> IO ()) -> IO ThreadId
+  simulateClient :: (Int64 -> IO ()) -> IO ThreadId
   simulateClient setInput = forkIO $ forever $ do
     threadDelay (1000000 `div` tickRate)
     setInput =<< randomIO
@@ -58,7 +59,7 @@ main = defaultMain $ testGroup "alpaca-netcode" [ testCase "2 Clients equal Auth
 
       -- Run a server
       tidServer <- forkIO $ runServer
-        (\msg (client :: Int) -> case client of
+        (\msg (client :: Int64) -> case client of
           0 -> writeChan toClient0 msg
           1 -> writeChan toClient1 msg
           _ -> error $ "Test error! unknown client: " ++ show client

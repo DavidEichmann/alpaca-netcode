@@ -29,7 +29,7 @@ import Control.Concurrent (forkIO, killThread, threadDelay)
 import Control.Concurrent.STM as STM
 import Control.Monad (forM_, forever, join, when)
 import Data.Coerce (coerce)
-import Data.Int (Int32)
+import Data.Int (Int64)
 import Data.IntMap (IntMap)
 import qualified Data.IntMap as IM
 import Data.List (dropWhileEnd, foldl')
@@ -65,7 +65,7 @@ runServer ::
   -- the send TChan.
   (IO (NetMsg input, clientAddress)) ->
   -- | Ticks per second. Must be the same across all host/clients.
-  Int32 ->
+  Int64 ->
   -- | Network options
   NetConfig ->
   -- | Initial input for new players.
@@ -184,7 +184,7 @@ runServer sendToClient' recvFromClient' tickFreq netConfig input0 = playCommon t
                           ++ ". Ignoring."
                   else do
                     inputs <- readTVar authInputsTVar
-                    let inptsAtTick = fromMaybe M.empty (inputs IM.!? coerce tick)
+                    let inptsAtTick = fromMaybe M.empty (inputs IM.!? fromIntegral tick)
                     case inptsAtTick M.!? playerId of
                       Just existingInput
                         -- Duplicate message. Silently ignore
@@ -199,7 +199,7 @@ runServer sendToClient' recvFromClient' tickFreq netConfig input0 = playCommon t
                       Nothing -> do
                         writeTVar authInputsTVar $
                           IM.insert
-                            (coerce tick)
+                            (fromIntegral tick)
                             (M.insert playerId input inptsAtTick)
                             inputs
 
@@ -212,7 +212,7 @@ runServer sendToClient' recvFromClient' tickFreq netConfig input0 = playCommon t
               (,) <$> readTVar authInputsTVar
                 <*> readTVar nextTickTVar
           forM_ (filter (\t -> 0 <= t && t < Tick nextTick) ticks) $ \(Tick tick) -> do
-            let x = inputs IM.! tick
+            let x = inputs IM.! fromIntegral tick
             sendToClient
               ( Msg_AuthInput
                   (Tick tick)
@@ -277,13 +277,13 @@ runServer sendToClient' recvFromClient' tickFreq netConfig input0 = playCommon t
         -- Advance auth inputs up to target tick.
         knownPlayers <- readTVar playersTVar
         authInputs <- readTVar authInputsTVar
-        let nextAuthTickInputs = authInputs IM.! coerce (nextAuthTick - 1)
+        let nextAuthTickInputs = authInputs IM.! fromIntegral (nextAuthTick - 1)
         writeTVar authInputsTVar $
           fst $
             foldl'
               ( \(authInputs', prevInputs) currTick ->
                   let -- Fill inputs for the current tick.
-                      currInputsRaw = fromMaybe M.empty (IM.lookup (coerce currTick) authInputs)
+                      currInputsRaw = fromMaybe M.empty (IM.lookup (fromIntegral currTick) authInputs)
                       currInputs =
                         M.fromList
                           [ ( pidInt
@@ -296,7 +296,7 @@ runServer sendToClient' recvFromClient' tickFreq netConfig input0 = playCommon t
                           | pid <- playerId <$> M.elems knownPlayers
                           , let pidInt = coerce pid
                           ]
-                   in (IM.insert (coerce currTick) currInputs authInputs', currInputs)
+                   in (IM.insert (fromIntegral currTick) currInputs authInputs', currInputs)
               )
               (authInputs, nextAuthTickInputs)
               [nextAuthTick .. targetTick]
@@ -309,8 +309,8 @@ runServer sendToClient' recvFromClient' tickFreq netConfig input0 = playCommon t
         return (authInputs, nextAuthTick)
       forM_ (M.assocs knownPlayers) $ \(sock, playerData) -> do
         let lastAuthTick = maxAuthTick playerData
-            (_, _, inputsToSendIntMap') = IM.splitLookup (coerce lastAuthTick) authInputs
-            (inputsToSendIntMap, firstHint, _) = IM.splitLookup (coerce nextAuthTick) inputsToSendIntMap'
+            (_, _, inputsToSendIntMap') = IM.splitLookup (fromIntegral lastAuthTick) authInputs
+            (inputsToSendIntMap, firstHint, _) = IM.splitLookup (fromIntegral nextAuthTick) inputsToSendIntMap'
             inputsToSend = take maxRequestAuthInputs $ IM.elems inputsToSendIntMap
             hintsToSendCount = maxRequestAuthInputs - IM.size inputsToSendIntMap
             hintsToSend =
@@ -318,7 +318,7 @@ runServer sendToClient' recvFromClient' tickFreq netConfig input0 = playCommon t
                 dropWhileEnd isNothing $
                   take hintsToSendCount $
                     firstHint :
-                      [ authInputs IM.!? coerce hintTick
+                      [ authInputs IM.!? fromIntegral hintTick
                       | hintTick <- [succ nextAuthTick ..]
                       ]
         when (not $ null inputsToSend) $

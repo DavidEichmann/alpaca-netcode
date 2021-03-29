@@ -30,7 +30,7 @@ module Alpaca.NetCode (
   Core.PlayerId (..),
 ) where
 
-import Data.Int (Int32)
+import Data.Int (Int64)
 import Control.Concurrent (
   Chan,
   forkIO,
@@ -85,9 +85,9 @@ runClient ::
   -- | The server's host name or IP address @String@.
   Core.HostName ->
   -- | The server's port number.
-  Int ->
+  Int64 ->
   -- | Ticks per second. Must be the same across all clients and the server.
-  Int32 ->
+  Int64 ->
   -- | Network options
   Core.NetConfig ->
   -- | Initial input for new players. Must be the same across all clients and
@@ -191,9 +191,9 @@ runServer ::
   forall input.
   (Eq input, Flat input) =>
   -- | The port number to use for this server.
-  Int ->
+  Int64 ->
   -- | Ticks per second. Must be the same across all host/clients.
-  Int32 ->
+  Int64 ->
   -- | Network options
   Core.NetConfig ->
   -- | Initial input for new players. Must be the same across all host/clients.
