@@ -96,7 +96,7 @@ runServer sendToClient' recvFromClient' simNetConditionsMay serverConfig input0 
     recvFromClient'
     simNetConditionsMay
   let sendToClient = curry sendToClient''
-  putStrLn "Waiting for clients"
+  debugStrLn "Waiting for clients"
 
   -- Authoritative Map from tick and PlayerId to inputs. The inner map is
   -- always complete (e.g. if we have the IntMap for tick i, then it contains
@@ -131,16 +131,16 @@ runServer sendToClient' recvFromClient' simNetConditionsMay serverConfig input0 
       -- Handle the message
       serverReceiveTimeMay <- case msg of
         Msg_Connected{} -> do
-          putStrLn $ "Server received unexpected Msg_Connected from " ++ show sender ++ ". Ignoring."
+          debugStrLn $ "Server received unexpected Msg_Connected from " ++ show sender ++ ". Ignoring."
           return Nothing
         Msg_AuthInput{} -> do
-          putStrLn $ "Server received unexpected Msg_AuthInput from " ++ show sender ++ ". Ignoring."
+          debugStrLn $ "Server received unexpected Msg_AuthInput from " ++ show sender ++ ". Ignoring."
           return Nothing
         Msg_HeartbeatResponse{} -> do
-          putStrLn $ "Server received unexpected Msg_HeartbeatResponse from " ++ show sender ++ ". Ignoring."
+          debugStrLn $ "Server received unexpected Msg_HeartbeatResponse from " ++ show sender ++ ". Ignoring."
           return Nothing
         Msg_HintInput{} -> do
-          putStrLn $ "Server received unexpected Msg_HintInput from " ++ show sender ++ ". Perhaps you meant to send a Msg_SubmitInput. Ignoring."
+          debugStrLn $ "Server received unexpected Msg_HintInput from " ++ show sender ++ ". Perhaps you meant to send a Msg_SubmitInput. Ignoring."
           return Nothing
         Msg_Connect clientSendTime -> do
           -- new client connection
@@ -171,7 +171,7 @@ runServer sendToClient' recvFromClient' simNetConditionsMay serverConfig input0 
               return $ do
                 sendToClient (Msg_Connected pid) sender
                 sendToClient (Msg_HeartbeatResponse clientSendTime serverReceiveTime) sender
-                mapM_ putStrLn debugMsg
+                mapM_ debugStrLn debugMsg
                 return (Just serverReceiveTime)
         Msg_Heartbeat clientSendTime -> do
           serverReceiveTime <- getTime
@@ -223,7 +223,7 @@ runServer sendToClient' recvFromClient' simNetConditionsMay serverConfig input0 
                             inputs
 
                         return Nothing
-          mapM_ putStrLn msgMay
+          mapM_ debugStrLn msgMay
           Just <$> getTime
         Msg_RequestAuthInput ticks -> do
           (inputs, Tick nextTick) <-
@@ -256,7 +256,7 @@ runServer sendToClient' recvFromClient' simNetConditionsMay serverConfig input0 
     players <- readTVar playersTVar
     STM.check $ not $ M.null players
 
-  putStrLn "Client connected. Starting game."
+  debugStrLn "Client connected. Starting game."
 
   -- Disconnect players after a timeout
   disconnectTID <- forkIO $
@@ -277,7 +277,7 @@ runServer sendToClient' recvFromClient' simNetConditionsMay serverConfig input0 
         let (retainedPlayers, kickedPlayers) = M.partition (\PlayerData{..} -> lastMesgRcvTime + scClientTimeout serverConfig > currentTime) players
         writeTVar playersTVar retainedPlayers
         return kickedPlayers
-      when (not (M.null kickedPlayers)) $ putStrLn $ "Disconnect players due to timeout: " ++ show [pid | PlayerData{playerId = PlayerId pid} <- M.elems kickedPlayers]
+      when (not (M.null kickedPlayers)) $ debugStrLn $ "Disconnect players due to timeout: " ++ show [pid | PlayerData{playerId = PlayerId pid} <- M.elems kickedPlayers]
 
   -- Main "simulation" loop
   simTID <- forkIO $
@@ -361,7 +361,7 @@ runServer sendToClient' recvFromClient' simNetConditionsMay serverConfig input0 
     players <- readTVar playersTVar
     STM.check $ M.null players
 
-  putStrLn "No more clients, Stopping game!"
+  debugStrLn "No more clients, Stopping game!"
 
   mapM_ killThread [msgProcessingTID, disconnectTID, simTID]
 

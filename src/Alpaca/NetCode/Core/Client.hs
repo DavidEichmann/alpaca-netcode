@@ -214,7 +214,7 @@ runClient sendToServer' rcvFromServer' simNetConditionsMay clientConfig input0 w
           Nothing -> return ()
           Just port -> do
             -- Server
-            putStrLn $ "Starting EKG server: http://localhost:" ++ show port ++ "/"
+            debugStrLn $ "Starting EKG server: http://localhost:" ++ show port ++ "/"
             -- store <- Metrics.newStore
             server <- Ekg.forkServer "localhost" port
 
@@ -321,7 +321,7 @@ runClient sendToServer' rcvFromServer' simNetConditionsMay clientConfig input0 w
           IORef.atomicModifyIORef' packetRecvCounterIORef_Msg_HintInput (\x -> (x + 1, ()))
 
       case msg of
-        Msg_Connect{} -> putStrLn "Client received unexpected Msg_Connect from the server. Ignoring."
+        Msg_Connect{} -> debugStrLn "Client received unexpected Msg_Connect from the server. Ignoring."
         Msg_Connected playerId -> do
           join $
             atomically $ do
@@ -329,15 +329,15 @@ runClient sendToServer' rcvFromServer' simNetConditionsMay clientConfig input0 w
               case playerIdMay of
                 Nothing -> do
                   writeTVar myPlayerIdTVar (Just playerId)
-                  return (putStrLn $ "Connected! " ++ show playerId)
-                Just playerId' -> return $ putStrLn $ "Got Msg_Connected " ++ show playerId' ++ "but already connected (with " ++ show playerId
-        Msg_SubmitInput{} -> putStrLn "Client received unexpected Msg_SubmitInput from the server. Ignoring."
+                  return (debugStrLn $ "Connected! " ++ show playerId)
+                Just playerId' -> return $ debugStrLn $ "Got Msg_Connected " ++ show playerId' ++ "but already connected (with " ++ show playerId
+        Msg_SubmitInput{} -> debugStrLn "Client received unexpected Msg_SubmitInput from the server. Ignoring."
         Msg_Ack{} ->
-          putStrLn "Client received unexpected Msg_Ack from the server. Ignoring."
+          debugStrLn "Client received unexpected Msg_Ack from the server. Ignoring."
         Msg_RequestAuthInput{} ->
-          putStrLn "Client received unexpected Msg_RequestAuthInput from the server. Ignoring."
+          debugStrLn "Client received unexpected Msg_RequestAuthInput from the server. Ignoring."
         Msg_Heartbeat{} ->
-          putStrLn "Client received unexpected Msg_Heartbeat from the server. Ignoring."
+          debugStrLn "Client received unexpected Msg_Heartbeat from the server. Ignoring."
         Msg_HeartbeatResponse clientSendTime serverReceiveTime -> do
           -- Record times for ping/clock sync.
           clientReceiveTime <- getTime
@@ -480,16 +480,9 @@ runClient sendToServer' rcvFromServer' simNetConditionsMay clientConfig input0 w
 
                     let predictionAllowance' = if isWNextAuth then predictionAllowance else predictionAllowance - 1
                     predict predictionAllowance' tickNext inputsNext wNext isWNextAuth
-                  else do
-                    -- putStrLn $ "Prediction allowance ran out. Stopping " ++ show (targetTick - tick) ++ " ticks early."
-                    return world
+                  else return world
               EQ -> return world
               GT -> error "Impossible! simulated past target tick!"
-
-        -- let Tick tickDuration = targetTick - startTick
-        -- when (tickDuration > 20) $ do
-        --   putStrLn $ "WARNING: simulating a lot of ticks: " ++ show tickDuration
-        --   putStrLn $ "    latest auth world: " ++ show startTick
 
         -- If very behind the server, we want to do 0 prediction
         maxAuthTick <- atomically $ readTVar maxAuthTickTVar
@@ -499,15 +492,6 @@ runClient sendToServer' rcvFromServer' simNetConditionsMay clientConfig input0 w
                 else fromIntegral (ccMaxPredictionTicks clientConfig)
 
         predictedTargetW <- predict predictionAllowance startTick startInputs startWorld True
-        -- let predictedTargetPic = draw predictedTargetW
-
-        -- putStrLn $ "Drawing " ++ show targetTick ++ " based on snapshot from " ++ show startTick
-        -- let
-        --   Tick inputCount = targetTick - startTick
-        --   Tick simCount = targetTick - startTick
-        --   in putStrLn $ "Replay tick count (input, simulating) = ("
-        --               ++ show inputCount ++ ", " ++ show simCount ++ ")"
-
         newAuthWorlds :: [world] <- atomically $ do
           lastSampledAuthWorldTick <- readTVar lastSampledAuthWorldTickTVar
           authWorlds <- readTVar authWorldsTVar

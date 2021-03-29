@@ -47,7 +47,7 @@ Run Client:
 * [X] cleanup arguments for runClient/Server
     * Remove NetConfig + Server doesn't need NetConfig.inputLatency
 * [X] refactor: Make a record for Client to return from runClient
-* [ ] Remove debug print statements
+* [X] Remove debug print statements
 * [ ] Only put current (not previous) input in the world step function's inputs
   arg.
 * [ ] Review documentation

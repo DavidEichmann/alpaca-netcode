@@ -226,11 +226,9 @@ writeDatagramContentsAsNetMsg constSenderMay f chan sock = go
  where
   go = do
     let maxBytes = 4096
-    -- putStrLn "."  -- For some reason... adding in these 2 `putStrLn`s makes the thing run! Why? A race condition? A Threading issue?
     (bs, sender) <- case constSenderMay of
       Nothing -> NBS.recvFrom sock maxBytes
       Just s -> (,s) <$> NBS.recv sock maxBytes
-    -- putStrLn "."
     if BS.length bs == maxBytes
       then
         error $
@@ -239,11 +237,11 @@ writeDatagramContentsAsNetMsg constSenderMay f chan sock = go
             ++ " bytes."
       else
         if BS.length bs == 0
-          then putStrLn "Received 0 bytes from socket. Stopping."
+          then debugStrLn "Received 0 bytes from socket. Stopping."
           else do
             case unflat @(NetMsg input) (BSL.fromStrict bs) of
               Left err -> do
-                putStrLn $
+                debugStrLn $
                   "Error decoding message: " ++ case err of
                     BadEncoding env errStr ->
                       "BadEncoding " ++ show env ++ "\n" ++ errStr

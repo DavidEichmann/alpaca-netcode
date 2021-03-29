@@ -51,6 +51,7 @@ maxRequestAuthInputs :: Int
 maxRequestAuthInputs = 100
 
 
+-- | TODO I need some proper logging mechanism.
 debugStrLn :: String -> IO ()
 debugStrLn _ = return ()
 
