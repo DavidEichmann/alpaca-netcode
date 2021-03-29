@@ -41,9 +41,21 @@ Run Client:
 ## Easy Stuff
 
 * [X] Make sure to simulate NetConfig options ping/jitter/drop
-* [ ] change tick rate argument from Int32 to Int
+* [ ] change tick rate argument from Int32 to Int64
+* [ ] Expose only Int64 instead of Tick
 * [ ] Metrics.... remove EKG dependency but keep metrics
 * [ ] Fix all warnings
+* [ ] cleanup arguments for runClient/Server
+    * Remove NetConfig + Server doesn't need NetConfig.inputLatency
+* [ ] refactor: Make a record for Client to return from runClient
+* [ ] Remove debug print statements
+* [ ] Only put current (not previous) input in the world step function's inputs
+  arg.
+* [ ] Review documentation
+    * blocking behaviour of all IO functions / IO function arguments
+* [ ] Core runServer signature includes NetMsg, but we don't export NetMsg and
+  don't really want to. I think we can just export it as an abstract type with
+  Flat instance from Alpaca.NetCode.Core
 
 ## Hard Stuff
 
