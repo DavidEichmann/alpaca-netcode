@@ -60,10 +60,11 @@ debugStrLn _ = return ()
 -- back clients might need to roll back their simulation. Too small of a buffer
 -- time means inputs will tend to be dropped (not made authoritative) because
 -- they arrived a bit late. Too high of a buffer time means clients can
--- experience more pronounced popping/corrections due to rollback.
+-- experience more pronounced popping/corrections due to large rollback.
 --
--- As dropping inputs is not nice, and we expect high jitter packets to be mor
--- of an exception than a rule, we can set this fairly high.
+-- TODO This seems like a bit of a hack. We could instead use a buffer based on
+-- out jitter. On the other hand we want to avoid time dilation, so this should
+-- not be overly dynamic.
 bufferTime :: Duration
 bufferTime = 0.03 -- seconds
 

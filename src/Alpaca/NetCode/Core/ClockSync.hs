@@ -28,6 +28,8 @@ import Data.Maybe (fromMaybe)
 
 import Data.Int (Int64)
 
+-- TODO make all these constants part of ClientConfig
+
 -- Min/Max Time dilation. This is the maximum speedup of our own clock that
 -- we'll allow to catch up to the estimated server clock. Note that the min is
 -- greater than 0 meaning that we never stop or reverse time.
