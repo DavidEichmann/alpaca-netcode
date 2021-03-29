@@ -120,7 +120,7 @@ runServerWith ::
   -- | Optional simulation of network conditions. In production this should be
   -- `Nothing`. May differ between clients.
   Maybe SimNetConditions ->
-  -- | Ticks per second. Must be the same across all host/clients.
+  -- | The 'defaultServerConfig' works well for most cases.
   ServerConfig ->
   -- | Initial input for new players.
   input ->

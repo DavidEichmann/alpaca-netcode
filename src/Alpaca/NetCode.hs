@@ -149,7 +149,7 @@ runClientWith ::
   -- | Optional simulation of network conditions. In production this should be
   -- `Nothing`. May differ between clients.
   Maybe SimNetConditions ->
-  -- | The @defaultClientConfig@ works well for most cases.
+  -- | The 'defaultClientConfig' works well for most cases.
   Core.ClientConfig ->
   -- | Initial input for new players. Must be the same across all clients and
   -- the server.
@@ -263,7 +263,7 @@ runServerWith ::
   -- | Optional simulation of network conditions. In production this should be
   -- `Nothing`.
   Maybe SimNetConditions ->
-  -- | The @defaultServerConfig@ works well for most cases.
+  -- | The 'defaultServerConfig' works well for most cases.
   Core.ServerConfig ->
   -- | Initial input for new players. Must be the same across all host/clients.
   input ->

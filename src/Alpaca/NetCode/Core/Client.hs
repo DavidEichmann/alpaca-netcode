@@ -196,7 +196,7 @@ runClientWith ::
   -- | Optional simulation of network conditions. In production this should be
   -- `Nothing`. May differ between clients.
   Maybe SimNetConditions ->
-  -- | The @defaultClientConfig@ works well for most cases.
+  -- | The 'defaultClientConfig' works well for most cases.
   ClientConfig ->
   -- | Initial input for new players. Must be the same across all clients and
   -- the server.
