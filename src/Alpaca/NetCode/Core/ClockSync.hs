@@ -88,8 +88,8 @@ initializeClockSync ::
   IO Float ->
   -- | Returns:
   --
-  -- *  Given some `extraTime`, Estimate the tick on the server when a message
-  --    sent at `now + extraTime` is received by the server plus some extraTime
+  -- *  Given some @extraTime@, Estimate the tick on the server when a message
+  --    sent at @now + extraTime@ is received by the server plus some extraTime
   --    time.
   --
   -- * Record a clock sync event. Given a heartbeat meassge, this is: client
