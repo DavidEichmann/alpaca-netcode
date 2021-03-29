@@ -1,4 +1,4 @@
-# Revision history for alpaca-netcode-core
+# Revision history for alpaca-netcode
 
 ## 0.1.0.0 -- YYYY-mm-dd
 

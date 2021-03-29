@@ -11,11 +11,11 @@ Build:
 
 Run Server:
 
-    $ cabal new-run -- alpaca-netcode-core
+    $ cabal new-run -- alpaca-netcode
 
 Run Client:
 
-    $ cabal new-run -- alpaca-netcode-core c
+    $ cabal new-run -- alpaca-netcode c
 
 # Nix
 
@@ -29,11 +29,11 @@ Build:
 
 Run Server:
 
-    $ nixGL cabal new-run -- alpaca-netcode-core
+    $ nixGL cabal new-run -- alpaca-netcode
 
 Run Client:
 
-    $ nixGL cabal new-run -- alpaca-netcode-core c
+    $ nixGL cabal new-run -- alpaca-netcode c
 
 
 # TODO

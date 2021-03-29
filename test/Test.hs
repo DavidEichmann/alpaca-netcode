@@ -21,7 +21,7 @@ import Data.Maybe (fromMaybe)
 import Data.List (foldl')
 
 main :: IO ()
-main = defaultMain $ testGroup "alpaca-netcode-core" [ testCase "2 Clients equal Auth Worlds (one client has poor net conditions)" $ let
+main = defaultMain $ testGroup "alpaca-netcode" [ testCase "2 Clients equal Auth Worlds (one client has poor net conditions)" $ let
   tickRate = 1000
   tickRate32 = fromIntegral 1000
 
