@@ -29,10 +29,9 @@ module Alpaca.NetCode.Core
     SimNetConditions (..),
     Tick (..),
     PlayerId (..),
-    HostName,
+    NetMsg
   ) where
 
 import Alpaca.NetCode.Core.Client
 import Alpaca.NetCode.Core.Common
 import Alpaca.NetCode.Core.Server
-import Network.Socket (HostName)

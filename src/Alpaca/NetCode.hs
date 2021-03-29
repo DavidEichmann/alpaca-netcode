@@ -33,9 +33,11 @@ module Alpaca.NetCode
     Core.SimNetConditions (..),
     Core.Tick (..),
     Core.PlayerId (..),
-    Core.HostName,
+    HostName,
   ) where
 
+import qualified Alpaca.NetCode.Core as Core
+import Alpaca.NetCode.Core.Common
 import Data.Int (Int64)
 import Control.Concurrent (
   Chan,
@@ -79,16 +81,13 @@ import Network.Socket (
  )
 import qualified Network.Socket.ByteString as NBS
 
-import qualified Alpaca.NetCode.Core as Core
-import Alpaca.NetCode.Core.Common
-
 -- | Start a networked client. This blocks until the initial handshake with the
 -- server is finished.
 runClient ::
   forall world input.
   Flat input =>
   -- | The server's host name or IP address @String@.
-  Core.HostName ->
+  HostName ->
   -- | The server's port number.
   Int64 ->
   -- | Optional simulation of network conditions. In production this should be
