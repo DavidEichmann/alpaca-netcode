@@ -12,7 +12,7 @@ license:             Apache-2.0
 license-file:        LICENSE
 author:              David Eichmann
 maintainer:          davide@well-typed.com
--- copyright:
+copyright:           2021 David Eichmann
 -- category:
 build-type:          Simple
 extra-source-files:  CHANGELOG.md
