@@ -8,8 +8,8 @@ version:             0.1.0.0
 -- synopsis:
 -- description:
 -- bug-reports:
--- license:
--- license-file:        LICENSE
+license:             Apache-2.0
+license-file:        LICENSE
 author:              David Eichmann
 maintainer:          davide@well-typed.com
 -- copyright:
