@@ -65,39 +65,39 @@ main = defaultMain $ testGroup "alpaca-netcode" [ testCase "2 Clients equal Auth
           _ -> error $ "Test error! unknown client: " ++ show client
         )
         (readChan toServer)
-        tickRate32
-        (NetConfig inputLatency Nothing)
+        Nothing
+        (defaultServerConfig tickRate32)
         initialInput
 
       -- A client with Perfect network conditions
-      (_, sample0, setInput0) <- runClient
+      client0 <- runClient
         (\msg -> writeChan toServer (msg, 0))
         (readChan toClient0)
-        tickRate32
-        (NetConfig inputLatency Nothing)
+        Nothing
+        (defaultClientConfig tickRate32)
         initialInput
-        stepWorld
         initialWorld
-      tid0 <- simulateClient setInput0
+        stepWorld
+      tid0 <- simulateClient (clientSetInput client0)
 
       -- A client with very poor network conditions
-      (_, sample1, setInput1) <- runClient
+      client1 <- runClient
         (\msg -> writeChan toServer (msg, 1))
         (readChan toClient1)
-        tickRate32
-        (NetConfig inputLatency (Just (0.2, 0.1, 0.5)))
+        (Just (SimNetConditions 0.2 0.1 0.5))
+        (defaultClientConfig tickRate32)
         initialInput
-        stepWorld
         initialWorld
-      tid1 <- simulateClient setInput1
+        stepWorld
+      tid1 <- simulateClient (clientSetInput client1)
 
       -- Let the game play for a bit
       threadDelay (4 * 1000000)
 
       -- Collect auth worlds from both clients
       let n = 2000
-      auths0 <- take n . fst <$> sample0
-      auths1 <- take n . fst <$> sample1
+      auths0 <- take n . fst <$> clientSample' client0
+      auths1 <- take n . fst <$> clientSample' client1
 
       length auths0 >= n @? "Expected at least " ++ show n ++ " auth worlds but client 0 got " ++ show (length auths0)
       length auths1 >= n @? "Expected at least " ++ show n ++ " auth worlds but client 1 got " ++ show (length auths1)
