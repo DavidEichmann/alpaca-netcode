@@ -21,17 +21,18 @@
 
 -- | Rollback and replay based game networking
 module Alpaca.NetCode.Core
-  ( runServer,
-    runClient,
+  ( -- * Server
+    module Alpaca.NetCode.Core.Server,
+    -- * Client
+    module Alpaca.NetCode.Core.Client,
+    -- * Common Types
+    SimNetConditions (..),
     Tick (..),
-    NetConfig (..),
-    defaultNetConfig,
-    HostName,
     PlayerId (..),
-  )
-where
+    HostName,
+  ) where
 
 import Alpaca.NetCode.Core.Client
 import Alpaca.NetCode.Core.Common
-import Network.Socket (HostName)
 import Alpaca.NetCode.Core.Server
+import Network.Socket (HostName)

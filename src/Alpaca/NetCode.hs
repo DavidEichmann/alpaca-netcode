@@ -20,15 +20,21 @@
 {-# LANGUAGE TypeFamilies #-}
 
 -- | Rollback and replay based game networking
-module Alpaca.NetCode (
-  runServer,
-  runClient,
-  Core.Tick (..),
-  Core.NetConfig (..),
-  Core.defaultNetConfig,
-  Core.HostName,
-  Core.PlayerId (..),
-) where
+module Alpaca.NetCode
+  ( -- * Server
+    runServer,
+    Core.ServerConfig (..),
+    Core.defaultServerConfig,
+    -- * Client
+    runClient,
+    Core.ClientConfig (..),
+    Core.defaultClientConfig,
+    -- * Common Types
+    Core.SimNetConditions (..),
+    Core.Tick (..),
+    Core.PlayerId (..),
+    Core.HostName,
+  ) where
 
 import Data.Int (Int64)
 import Control.Concurrent (
@@ -76,9 +82,8 @@ import qualified Network.Socket.ByteString as NBS
 import qualified Alpaca.NetCode.Core as Core
 import Alpaca.NetCode.Core.Common
 
-{- | Start a networked client. This blocks until the initial handshake with the
- server is finished.
--}
+-- | Start a networked client. This blocks until the initial handshake with the
+-- server is finished.
 runClient ::
   forall world input.
   Flat input =>
@@ -86,54 +91,39 @@ runClient ::
   Core.HostName ->
   -- | The server's port number.
   Int64 ->
-  -- | Ticks per second. Must be the same across all clients and the server.
-  Int64 ->
-  -- | Network options
-  Core.NetConfig ->
+  -- | Optional simulation of network conditions. In production this should be
+  -- `Nothing`. May differ between clients.
+  Maybe SimNetConditions ->
+  -- | The @defaultClientConfig@ works well for most cases.
+  Core.ClientConfig ->
   -- | Initial input for new players. Must be the same across all clients and
   -- the server.
   input ->
+  -- | Initial world state. Must be the same across all clients.
+  world ->
   -- | A deterministic stepping function (for a single tick). Must be the same
-  -- across all host/clients. Takes:
+  -- across all clients and the server. Takes:
   --
   -- * a map from PlayerId to (previous, current) input.
   -- * current game tick.
   -- * previous tick's world state
   --
-  -- It is important that this is deterministic, else clients' states will
+  -- It is important that this is deterministic else clients' states will
   -- diverge. Beware of floating point non-determinism!
   ( M.Map Core.PlayerId (input, input) ->
     Core.Tick ->
     world ->
     world
   ) ->
-  -- | Initial world state. Must be the same across all clients.
-  world ->
-  -- | Returns:
-  --
-  -- * The client's @PlayerId@
-  -- * A way to sample the world state. This returns:
-  --   * New authoritative world states in chronological order since the last
-  --     sample time. These world states are the True world states at each
-  --     tick. This list will be empty if no new authoritative world states have
-  --     been derived since that last call to this sample function. Though it's
-  --     often simpler to just use the predicted world state, you can use these
-  --     authoritative world states to render output when you're not willing to
-  --     miss-predict but are willing to have greater latency.
-  --   * The predicted world state for the current time. This extrapolates past
-  --     the latest know authoritative world state by assuming no user inputs
-  --     have changed (unless otherwise known e.g. our own player's inputs are
-  --     known).
-  -- * A way to set the current input of the client. This should be done at
-  --   least as often as the tick rate. If this is not called for a given tick,
-  --   inputs will be assumed unchanged.
-  IO
-    ( Core.PlayerId
-    , IO ([world], world)
-    , input -> IO ()
-    )
-runClient serverHostName serverPort tickFreq netConfig input0 stepOneTick world0 =
-  do
+  IO (Core.Client world input)
+runClient
+  serverHostName
+  serverPort
+  simNetConditionsMay
+  clientConfig
+  input0
+  world0
+  stepOneTick = do
     sendChan <- newChan
     recvChan <- newChan
 
@@ -150,11 +140,11 @@ runClient serverHostName serverPort tickFreq netConfig input0 stepOneTick world0
     Core.runClient
       (writeChan sendChan)
       (readChan recvChan)
-      tickFreq
-      netConfig
+      simNetConditionsMay
+      clientConfig
       input0
-      stepOneTick
       world0
+      stepOneTick
  where
   --
   -- Coppied from network-run
@@ -190,12 +180,13 @@ runClient serverHostName serverPort tickFreq netConfig input0 stepOneTick world0
 runServer ::
   forall input.
   (Eq input, Flat input) =>
-  -- | The port number to use for this server.
+  -- | The server's port number.
   Int64 ->
-  -- | Ticks per second. Must be the same across all host/clients.
-  Int64 ->
-  -- | Network options
-  Core.NetConfig ->
+  -- | Optional simulation of network conditions. In production this should be
+  -- `Nothing`.
+  Maybe SimNetConditions ->
+  -- | The @defaultServerConfig@ works well for most cases.
+  Core.ServerConfig ->
   -- | Initial input for new players. Must be the same across all host/clients.
   input ->
   IO ()

@@ -41,9 +41,8 @@ Run Client:
 ## Easy Stuff
 
 * [X] Make sure to simulate NetConfig options ping/jitter/drop
-* [ ] change tick rate argument from Int32 to Int64
-* [ ] Expose only Int64 instead of Tick
-* [ ] Metrics.... remove EKG dependency but keep metrics
+* [X] change tick rate argument from Int32 to Int64
+* [NO] Expose only Int64 instead of Tick
 * [ ] Fix all warnings
 * [ ] cleanup arguments for runClient/Server
     * Remove NetConfig + Server doesn't need NetConfig.inputLatency
@@ -56,9 +55,12 @@ Run Client:
 * [ ] Core runServer signature includes NetMsg, but we don't export NetMsg and
   don't really want to. I think we can just export it as an abstract type with
   Flat instance from Alpaca.NetCode.Core
+* Remove `text` dependency. It is only used for EKG label output
+* [ ]  use defaults in runClient/Server and take configs in runClient/ServerWith.
 
 ## Hard Stuff
 
+* [ ] Metrics.... remove EKG dependency but keep metrics
 * [ ] Clean shutdown and cleanup of threads
   * Simulated network condition threads
   * search for forkIO

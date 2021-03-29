@@ -24,6 +24,13 @@
 -- | Rollback and replay based game networking
 module Alpaca.NetCode.Core.Client
   ( runClient
+  , ClientConfig (..)
+  , defaultClientConfig
+  , Client
+  , clientPlayerId
+  , clientSample
+  , clientSample'
+  , clientSetInput
   ) where
 
 import Control.Concurrent (forkIO, threadDelay)
@@ -47,23 +54,84 @@ import Text.Read
 import Alpaca.NetCode.Core.ClockSync
 import Alpaca.NetCode.Core.Common
 
+-- | A Client. You'll generally obtain this via @Alpaca.NetCode.runClient@.
+data Client world input = Client
+  { -- | The client's @PlayerId@
+    clientPlayerId :: PlayerId
+  , -- | Sample the world state. This will roll back and replay inputs as
+    -- necessary. This returns:
+    --
+    -- * New authoritative world states in chronological order since the last
+    --   sample time. These world states are the True world states at each
+    --   tick. This list will be empty if no new authoritative world states have
+    --   been derived since that last call to this sample function. Though it's
+    --   often simpler to just use the predicted world state, you can use these
+    --   authoritative world states to render output when you're not willing to
+    --   miss-predict but are willing to have greater latency.
+    -- * The predicted world state for the current time. This extrapolates past
+    --   the latest know authoritative world state by assuming no user inputs
+    --   have changed (unless otherwise known e.g. our own player's inputs are
+    --   known).
+    --
+    clientSample' :: IO ([world], world)
+  , -- | Set the current input. This will be used on the next tick. In
+    -- godot, you'll likely collect inputs by impelemnting _input or similar
+    -- and calling this function.
+    clientSetInput :: input -> IO ()
+  }
 
--- | Maximum number of ticks to predict. If the client is this many ticks behind
--- the target tick, it will simply stop at an earlier tick.
-maxPredictionTicks :: Int64
-maxPredictionTicks = 40
+-- | Sample the current predicted world state of a client. This will roll back
+-- and replay inputs as necessary.
+clientSample :: Client world input -> IO world
+clientSample client = snd <$> clientSample' client
 
+-- | Configuration options specific to clients.
+data ClientConfig = ClientConfig
+  {
+  -- | Tick rate (ticks per second). Must be the same across all clients and the
+  -- server. Packet rate and hence network bandwidth will scale linearly with
+  -- this the tick rate.
+    ccTickRate :: Int
+  -- | Add this constant amount of latency (in seconds) to this client's inputs.
+  -- A good value is 0.03 or something between 0 and 0.1. May differ between
+  -- clients.
+  --
+  -- Too high of a value and the player will get annoyed at the extra input
+  -- latency. On the other hand, a higher value means less miss-predictions for
+  -- other clients. In the extreme case, if this is set to something higher than
+  -- ping, there will be no miss predictions: all clients will receive inputs
+  -- before rendering the corresponding tick.
+  , ccFixedInputLatency :: Float
+  -- | Maximum number of ticks to predict. If the client is this many ticks
+  -- behind the target tick, it will simply stop at an earlier tick. You may
+  -- want to scale this value along with the tick rate. May differ between
+  -- clients.
+  , ccMaxPredictionTicks :: Int
+  -- | If the client's latest auth world is this many ticks behind the target
+  -- tick, no prediction will be done at all. We want to safe CPU cycles for
+  -- catching up with the server. You may want to scale this value along with
+  -- the tick rate. May differ between clients.
+  , ccResyncThresholdTicks :: Int
+  }
 
--- | If the client's latest auth world is this many ticks behind the target
--- tick, no prediction will be done at all. We want to safe CPU cycles for
--- catching up with the server.
-resyncThresholdTick :: Int64
-resyncThresholdTick = 500
+-- | Sensible defaults for @ClientConfig@ based on the tick rate.
+defaultClientConfig ::
+  -- | Tick rate (ticks per second). Must be the same across all clients and the
+  -- server. Packet rate and hence network bandwidth will scale linearly with
+  -- this the tick rate.
+  Int ->
+  ClientConfig
+defaultClientConfig tickRate = ClientConfig
+  { ccTickRate = tickRate
+  , ccFixedInputLatency = 0.03
+  , ccMaxPredictionTicks = tickRate `div` 2
+  , ccResyncThresholdTicks = tickRate * 3
+  }
 
-
--- | Start a networked client!
+-- | Start a networked client. This blocks until the initial handshake with the
+-- server is finished.
 runClient ::
-  forall w input.
+  forall world input.
   Flat input =>
   -- | Function to send messages to the server. The underlying communication
   -- protocol need only guarantee data integrity but is otherwise free to drop
@@ -72,38 +140,36 @@ runClient ::
   -- | Chan to receive messages from the server. Has the same requirements as
   -- the send TChan.
   (IO (NetMsg input)) ->
-  -- | Ticks per second. Must be the same across all clients and the server.
-  Int64 ->
-  -- | Network options
-  NetConfig ->
-  -- | Initial input for new players.
+  -- | Optional simulation of network conditions. In production this should be
+  -- `Nothing`. May differ between clients.
+  Maybe SimNetConditions ->
+  -- | The @defaultClientConfig@ works well for most cases.
+  ClientConfig ->
+  -- | Initial input for new players. Must be the same across all clients and
+  -- the server.
   input ->
-  -- | Stepping function (for a single tick). Must be the same across all
-  -- host/clients. Takes:
+  -- | Initial world state. Must be the same across all clients.
+  world ->
+  -- | A deterministic stepping function (for a single tick). Must be the same
+  -- across all clients and the server. Takes:
+  --
   -- * a map from PlayerId to (previous, current) input.
   -- * current game tick.
   -- * previous tick's world state
-  (M.Map PlayerId (input, input) -> Tick -> w -> w) ->
-  -- | Initial world state. Must be the same across all clients.
-  w ->
-  IO
-    ( PlayerId
-    , IO
-        ( [w] -- New auth worlds since last sample (may be empty).
-        , w -- Predicted World states at the target tick (May be an auth tick though this won't happen in practice due to network latency),
-        )
-    , -- Sample function. Picks a tick, predicts the world for that tick and
-      -- returns it.
-      (input -> IO ())
-      -- Set the current input. This will be used on the next tick. In
-      -- godot, you'll likely collect inputs by impelemnting _input or similar
-      -- and calling this function.
-    )
-runClient sendToServer' rcvFromServer' tickFreq netConfig input0 stepOneTick world0 = playCommon tickFreq $ \tickTime getTime _resetTime -> do
+  --
+  -- It is important that this is deterministic else clients' states will
+  -- diverge. Beware of floating point non-determinism!
+  ( M.Map PlayerId (input, input) ->
+    Tick ->
+    world ->
+    world
+  ) ->
+  IO (Client world input)
+runClient sendToServer' rcvFromServer' simNetConditionsMay clientConfig input0 world0 stepOneTick = playCommon (ccTickRate clientConfig) $ \tickTime getTime _resetTime -> do
   (sendToServer, rcvFromServer) <- simulateNetConditions
     sendToServer'
     rcvFromServer'
-    (simulatedNetConditions netConfig)
+    simNetConditionsMay
 
   -- Authoritative Map from tick and PlayerId to inputs. The inner map is
   -- always complete (e.g. if we have the IntMap for tick i, then it contains
@@ -111,7 +177,7 @@ runClient sendToServer' rcvFromServer' tickFreq netConfig input0 stepOneTick wor
   authInputsTVar :: TVar (IntMap (M.Map PlayerId input)) <- newTVarIO (IM.singleton 0 M.empty)
 
   -- Tick to authoritative world state.
-  authWorldsTVar :: TVar (IntMap w) <- newTVarIO (IM.singleton 0 world0)
+  authWorldsTVar :: TVar (IntMap world) <- newTVarIO (IM.singleton 0 world0)
 
   -- Max known auth inputs tick without any prior missing ticks.
   maxAuthTickTVar :: TVar Tick <- newTVarIO 0
@@ -353,10 +419,9 @@ runClient sendToServer' rcvFromServer' tickFreq netConfig input0 stepOneTick wor
   myPlayerId <- atomically $ do
     pidMay <- readTVar myPlayerIdTVar
     maybe retry return pidMay
-  return
-    ( myPlayerId
-    , -- Sample the latest world
-      do
+  return $ Client
+    { clientPlayerId = myPlayerId
+    , clientSample' = do
         -- TODO We can send (non-auth) inputs p2p!
 
         -- TODO we're just resimulating from the last snapshot every
@@ -385,10 +450,10 @@ runClient sendToServer' rcvFromServer' tickFreq netConfig input0 stepOneTick wor
               Int64 -> -- How many ticks of prediction to allow
               Tick -> -- Some tick i
               M.Map PlayerId input -> -- inputs at tick i
-              w -> -- world at tick i if simulated
+              world -> -- world at tick i if simulated
               Bool -> -- Is the world authoritative?
-              IO w -- world at targetTick (or latest tick if predictionAllowance ran out)
-            predict predictionAllowance tick tickInputs w isWAuth = case compare tick targetTick of
+              IO world -- world at targetTick (or latest tick if predictionAllowance ran out)
+            predict predictionAllowance tick tickInputs world isWAuth = case compare tick targetTick of
               LT -> do
                 let tickNext = tick + 1
 
@@ -409,7 +474,7 @@ runClient sendToServer' rcvFromServer' tickFreq netConfig input0 stepOneTick wor
                             )
                             inputsNext
 
-                    let wNext = stepOneTick zippedInputs tickNext w
+                    let wNext = stepOneTick zippedInputs tickNext world
                     when isWNextAuth $
                       atomically $ modifyTVar authWorldsTVar (IM.insert (fromIntegral tickNext) wNext)
 
@@ -417,8 +482,8 @@ runClient sendToServer' rcvFromServer' tickFreq netConfig input0 stepOneTick wor
                     predict predictionAllowance' tickNext inputsNext wNext isWNextAuth
                   else do
                     -- putStrLn $ "Prediction allowance ran out. Stopping " ++ show (targetTick - tick) ++ " ticks early."
-                    return w
-              EQ -> return w
+                    return world
+              EQ -> return world
               GT -> error "Impossible! simulated past target tick!"
 
         -- let Tick tickDuration = targetTick - startTick
@@ -429,9 +494,9 @@ runClient sendToServer' rcvFromServer' tickFreq netConfig input0 stepOneTick wor
         -- If very behind the server, we want to do 0 prediction
         maxAuthTick <- atomically $ readTVar maxAuthTickTVar
         let predictionAllowance =
-              if targetTick - maxAuthTick > Tick resyncThresholdTick
+              if targetTick - maxAuthTick > Tick (fromIntegral $ ccResyncThresholdTicks clientConfig)
                 then 0
-                else maxPredictionTicks
+                else fromIntegral (ccMaxPredictionTicks clientConfig)
 
         predictedTargetW <- predict predictionAllowance startTick startInputs startWorld True
         -- let predictedTargetPic = draw predictedTargetW
@@ -443,7 +508,7 @@ runClient sendToServer' rcvFromServer' tickFreq netConfig input0 stepOneTick wor
         --   in putStrLn $ "Replay tick count (input, simulating) = ("
         --               ++ show inputCount ++ ", " ++ show simCount ++ ")"
 
-        newAuthWorlds :: [w] <- atomically $ do
+        newAuthWorlds :: [world] <- atomically $ do
           lastSampledAuthWorldTick <- readTVar lastSampledAuthWorldTickTVar
           authWorlds <- readTVar authWorldsTVar
           let latestAuthWorldTick = Tick $ fromIntegral $ fst $ IM.findMax authWorlds
@@ -451,10 +516,11 @@ runClient sendToServer' rcvFromServer' tickFreq netConfig input0 stepOneTick wor
           return ((authWorlds IM.!) . fromIntegral <$> [lastSampledAuthWorldTick + 1 .. latestAuthWorldTick])
 
         return (newAuthWorlds, predictedTargetW)
-    , -- Handle events. We submit events as soon as we expect that the
-      -- server to have a future tick. Else we just collect them.
+    , clientSetInput =
       \newInput -> do
-        targetTick <- estimateServerTickPlusLatencyPlusBufferPlus (inputLatency netConfig)
+        -- We submit events as soon as we expect the server to be on a future
+        -- tick. Else we just store the new input.
+        targetTick <- estimateServerTickPlusLatencyPlusBufferPlus (ccFixedInputLatency clientConfig)
         join $ atomically $ do
           -- event (esRev, lastTick, lastInput) -> do
           lastTick <- readTVar lastTickTVar
@@ -477,4 +543,4 @@ runClient sendToServer' rcvFromServer' tickFreq netConfig input0 stepOneTick wor
               -- TODO we need to duplicate send to protect from dropped packets)
               return (sendToServer (Msg_SubmitInput targetTick newInput))
             else pure (return ())
-    )
+    }

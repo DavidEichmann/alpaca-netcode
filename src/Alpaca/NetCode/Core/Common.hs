@@ -45,10 +45,6 @@ import Data.Int (Int64)
 -- inputs once per tick to the server.
 
 
--- | Seconds of silence to wait before disconnecting a player
-disconnectTimeout :: Float
-disconnectTimeout = 5
-
 
 -- | How many missing inputs to request at a time
 maxRequestAuthInputs :: Int
@@ -97,33 +93,36 @@ newtype PlayerId = PlayerId {unPlayerId :: Word8}
 deriving newtype instance (Flat PlayerId)
 
 
-data NetConfig = NetConfig
-  { -- | Add this latency (in seconds) to all input. Players will experience
-    -- this latency even during perfect prediction, but the latency will be
-    -- consistent and reduces artifacts because input messages will be received
-    -- earlier (at least relative to their intended tick). In the extream case,
-    -- if this is set to something higher than ping, there will be no miss
-    -- predictions: all clients will receive inputs before rendering their
-    -- corresponding tick.
-    inputLatency :: Float
-  , -- | Simulate:
-    -- * Ping (seconds)
-    -- * Jitter (seconds)
-    -- * Percentage Package loss (0 = no packet loss, 1 = 100% packet loss)
-    simulatedNetConditions :: Maybe (Float, Float, Float)
-    -- -- | number of times to duplicate unreliable messages (e.g. input messages)
-    -- -- to make them more reliable.
-    -- msgDuplication :: Int64
+-- | Settings for simulating network conditions. Packets in both the send and
+-- receive directions are randomly dropped or delayed by `simPing/2` plus some
+-- random duration between `-simJitter` and `simJitter`.
+data SimNetConditions = SimNetConditions
+  { -- | Extra ping (seconds)
+    simPing :: Float
+  , -- | Extra jitter (seconds). Should be less than simPing.
+    simJitter :: Float
+  , -- | Package loss (0 = no packet loss, 1 = 100% packet loss).
+    simPackageLoss :: Float
   }
 
-
-defaultNetConfig :: NetConfig
-defaultNetConfig =
-  NetConfig
-    { inputLatency = 0.03
-    , simulatedNetConditions = Nothing -- Just (0.2, 0, 0.2)
-    -- msgDuplication = 5
-    }
+-- data NetConfig = NetConfig
+--   { -- | Add this latency (in seconds) to all input. Players will experience
+--     -- this latency even during perfect prediction, but the latency will be
+--     -- consistent and reduces artifacts because input messages will be received
+--     -- earlier (at least relative to their intended tick). In the extream case,
+--     -- if this is set to something higher than ping, there will be no miss
+--     -- predictions: all clients will receive inputs before rendering their
+--     -- corresponding tick.
+--     inputLatency :: Float
+--   , -- | Simulate:
+--     -- * Ping (seconds)
+--     -- * Jitter (seconds)
+--     -- * Percentage Package loss (0 = no packet loss, 1 = 100% packet loss)
+--     simulatedNetConditions :: Maybe (Float, Float, Float)
+--     -- -- | number of times to duplicate unreliable messages (e.g. input messages)
+--     -- -- to make them more reliable.
+--     -- msgDuplication :: Int64
+--   }
 
 simulateNetConditions ::
   -- | Send function
@@ -131,14 +130,14 @@ simulateNetConditions ::
   -- | Receive function (blocking)
   (IO msg) ->
   -- | Simulated ping/jitter/packetloss[0-1]
-  Maybe (Float, Float, Float) ->
+  Maybe SimNetConditions ->
   -- | New send and receive functions.
   IO ( msg -> IO ()
      , IO msg
      )
 simulateNetConditions doSendMsg doRecvMsg simMay = case simMay of
   Nothing -> return (doSendMsg, doRecvMsg)
-  Just (ping, jitter, loss) -> do
+  Just (SimNetConditions ping jitter loss) -> do
     -- Start a thread that just writes received messages into a chan
     recvChan <- newChan
     _recvThreadId <- forkIO $ forever $ do

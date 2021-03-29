@@ -22,6 +22,8 @@
 -- | Rollback and replay based game networking
 module Alpaca.NetCode.Core.Server
   ( runServer
+  , ServerConfig (..)
+  , defaultServerConfig
   ) where
 
 import Control.Applicative
@@ -29,7 +31,6 @@ import Control.Concurrent (forkIO, killThread, threadDelay)
 import Control.Concurrent.STM as STM
 import Control.Monad (forM_, forever, join, when)
 import Data.Coerce (coerce)
-import Data.Int (Int64)
 import Data.IntMap (IntMap)
 import qualified Data.IntMap as IM
 import Data.List (dropWhileEnd, foldl')
@@ -41,22 +42,39 @@ import Prelude
 
 import Alpaca.NetCode.Core.Common
 
--- | Per player info stored by the server
-data PlayerData = PlayerData
-  { -- | last tick for which auth inputs were sent from the server
-    playerId :: PlayerId
-  , -- | Client's max known auth inputs tick such that there are no missing
-    -- ticks before it.
-    maxAuthTick :: Tick
-  , -- | Last server time at which a message was received from this player.
-    lastMesgRcvTime :: Float
+-- | Configuration options specific to the server.
+data ServerConfig = ServerConfig
+  {
+  -- | Tick rate (ticks per second). Must be the same across all clients and the
+  -- server. Packet rate and hence network bandwidth will scale linearly with
+  -- this the tick rate.
+    scTickRate :: Int
+  -- | Seconds of not receiving packets from a client before disconnecting that
+  -- client.
+  , scClientTimeout :: Float
+  }
+
+-- | Sensible defaults for @ServerConfig@ based on the tick rate.
+defaultServerConfig ::
+  -- | Tick rate (ticks per second). Must be the same across all clients and the
+  -- server. Packet rate and hence network bandwidth will scale linearly with
+  -- this the tick rate.
+  Int
+  -> ServerConfig
+defaultServerConfig tickRate = ServerConfig
+  { scTickRate = tickRate
+  , scClientTimeout = 5
   }
 
 -- | Run a server for a single game. This will block until the game ends,
 -- specifically when all players have disconnected.
 runServer ::
   forall input clientAddress.
-  (Eq input, Flat input, Show clientAddress, Ord clientAddress) =>
+  ( Eq input
+  , Flat input
+  , Show clientAddress
+  , Ord clientAddress
+  ) =>
   -- | Function to send messages to clients. The underlying communication
   -- protocol need only guarantee data integrity but is otherwise free to drop
   -- and reorder packets. Typically this is backed by a UDP socket.
@@ -64,18 +82,19 @@ runServer ::
   -- | Chan to receive messages from clients. Has the same requirements as
   -- the send TChan.
   (IO (NetMsg input, clientAddress)) ->
+  -- | Optional simulation of network conditions. In production this should be
+  -- `Nothing`. May differ between clients.
+  Maybe SimNetConditions ->
   -- | Ticks per second. Must be the same across all host/clients.
-  Int64 ->
-  -- | Network options
-  NetConfig ->
+  ServerConfig ->
   -- | Initial input for new players.
   input ->
   IO ()
-runServer sendToClient' recvFromClient' tickFreq netConfig input0 = playCommon tickFreq $ \tickTime getTime resetTime -> forever $ do
+runServer sendToClient' recvFromClient' simNetConditionsMay serverConfig input0 = playCommon (scTickRate serverConfig) $ \tickTime getTime resetTime -> forever $ do
   (sendToClient'', recvFromClient) <- simulateNetConditions
     (uncurry sendToClient')
     recvFromClient'
-    (simulatedNetConditions netConfig)
+    simNetConditionsMay
   let sendToClient = curry sendToClient''
   putStrLn "Waiting for clients"
 
@@ -244,7 +263,7 @@ runServer sendToClient' recvFromClient' tickFreq netConfig input0 = playCommon t
     forever $ do
       -- Find next possilbe time to disconnect a player
       oldestMsgRcvTime <- atomically (minimum . fmap lastMesgRcvTime . M.elems <$> readTVar playersTVar)
-      let disconnectTime = oldestMsgRcvTime + disconnectTimeout
+      let disconnectTime = oldestMsgRcvTime + scClientTimeout serverConfig
 
       -- Wait till the disconnect time (plus a bit to really make sure we pass the threshold)
       t <- getTime
@@ -255,7 +274,7 @@ runServer sendToClient' recvFromClient' tickFreq netConfig input0 = playCommon t
       currentTime <- getTime
       kickedPlayers <- atomically $ do
         players <- readTVar playersTVar
-        let (retainedPlayers, kickedPlayers) = M.partition (\PlayerData{..} -> lastMesgRcvTime + disconnectTimeout > currentTime) players
+        let (retainedPlayers, kickedPlayers) = M.partition (\PlayerData{..} -> lastMesgRcvTime + scClientTimeout serverConfig > currentTime) players
         writeTVar playersTVar retainedPlayers
         return kickedPlayers
       when (not (M.null kickedPlayers)) $ putStrLn $ "Disconnect players due to timeout: " ++ show [pid | PlayerData{playerId = PlayerId pid} <- M.elems kickedPlayers]
@@ -345,3 +364,14 @@ runServer sendToClient' recvFromClient' tickFreq netConfig input0 = playCommon t
   putStrLn "No more clients, Stopping game!"
 
   mapM_ killThread [msgProcessingTID, disconnectTID, simTID]
+
+-- | Per player info stored by the server
+data PlayerData = PlayerData
+  { -- | last tick for which auth inputs were sent from the server
+    playerId :: PlayerId
+  , -- | Client's max known auth inputs tick such that there are no missing
+    -- ticks before it.
+    maxAuthTick :: Tick
+  , -- | Last server time at which a message was received from this player.
+    lastMesgRcvTime :: Float
+  }
