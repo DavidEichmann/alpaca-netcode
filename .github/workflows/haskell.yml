@@ -37,4 +37,4 @@ jobs:
     - name: Build
       run: cabal build --enable-tests --enable-benchmarks all
     - name: Run tests
-      run: cabal test all
+      run: cabal run test -- -p "\!/[NOCI]/"

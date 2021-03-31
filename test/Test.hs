@@ -27,7 +27,7 @@ import Data.Maybe (fromMaybe)
 import Data.List (foldl')
 
 main :: IO ()
-main = defaultMain $ testGroup "alpaca-netcode" [ testGroup "2 Clients equal Auth Worlds (one client has poor net conditions)" $ let
+main = defaultMain $ testGroup "alpaca-netcode" $ let
   tickRate = 1000
   tickRate32 = fromIntegral 1000
 
@@ -123,7 +123,7 @@ main = defaultMain $ testGroup "alpaca-netcode" [ testGroup "2 Clients equal Aut
           return ()
         when (isNothing x) (assertFailure "Timeout!")
   in
-    [ testCase "core" $ do
+    [ testCase "Core" $ do
         -- Use `Chan` to communicate
         toServer <- newChan
         toClient0 <- newChan
@@ -146,11 +146,10 @@ main = defaultMain $ testGroup "alpaca-netcode" [ testGroup "2 Clients equal Aut
             (\msg -> writeChan toServer (msg, 1))
             (readChan toClient1)
           )
-    , testCase "UDP" $ do
+    , testCase "UDP [NOCI]" $ do
         let port = "8888"
         test
           (NC.runServerWith port)
           (NC.runClientWith "localhost" port)
           (NC.runClientWith "localhost" port)
     ]
-  ]
