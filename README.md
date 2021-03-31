@@ -21,6 +21,7 @@
 * [X] EKG dependency + Metrics
 * [X] Fix all warnings
 * [X] `Tick` probably shouldn't be an instance of `Semigroup`
+* [X] Remove Msg_RequestAuthInput
 * [ ] Review documentation
 
 ## Medium
@@ -40,7 +41,6 @@
   to better handle packet loss!
   * Like the server, I probably want to have a fixed rate packet send loop
     rather than sending packets at adhoc locations in the code.
-* [X] Remove Msg_RequestAuthInput
 
 ## Future work
 
