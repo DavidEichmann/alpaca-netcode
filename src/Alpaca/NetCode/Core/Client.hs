@@ -241,94 +241,6 @@ runClientWith sendToServer' rcvFromServer' simNetConditionsMay clientConfig inpu
   (estimateServerTickPlusLatencyPlusBufferPlus, recordClockSyncSample, clockAnalytics) <- initializeClockSync tickTime getTime
   let estimateServerTickPlusLatencyPlusBuffer = estimateServerTickPlusLatencyPlusBufferPlus 0
 
-  -- TODO Analytics output
-  -- packetRecvCounterIORef <- IORef.newIORef 0
-  -- packetRecvCounterIORef_Msg_Connect <- IORef.newIORef 0
-  -- packetRecvCounterIORef_Msg_Connected <- IORef.newIORef 0
-  -- packetRecvCounterIORef_Msg_Heartbeat <- IORef.newIORef 0
-  -- packetRecvCounterIORef_Msg_Ack <- IORef.newIORef 0
-  -- packetRecvCounterIORef_Msg_HeartbeatResponse <- IORef.newIORef 0
-  -- packetRecvCounterIORef_Msg_AuthInput <- IORef.newIORef 0
-  -- packetRecvCounterIORef_Msg_HintInput <- IORef.newIORef 0
-  -- packetRecvCounterIORef_Msg_SubmitInput <- IORef.newIORef 0
-  -- packetRecvCounterIORef_Msg_RequestAuthInput <- IORef.newIORef 0
-  -- _ <-
-  --   forkIO $
-  --     Env.lookupEnv "NET_EKG" >>= \case
-  --       Nothing -> return ()
-  --       Just portStr -> case readMaybe portStr of
-  --         Nothing -> return ()
-  --         Just port -> do
-  --           -- Server
-  --           debugStrLn $ "Starting EKG server: http://localhost:" ++ show port ++ "/"
-  --           -- store <- Metrics.newStore
-  --           server <- Ekg.forkServer "localhost" port
-
-  --           -- Metrics
-  --           metricPlayerLable <- Ekg.getLabel "rogue.player" server
-  --           metricPacketsPerSecDown <- Ekg.getGauge "rogue.packets_per_second_download" server
-  --           metricPacketsPerSecDown_Msg_Connect <- Ekg.getGauge "rogue.packets_down.msg_connect" server
-  --           metricPacketsPerSecDown_Msg_Connected <- Ekg.getGauge "rogue.packets_down.msg_connected" server
-  --           metricPacketsPerSecDown_Msg_Heartbeat <- Ekg.getGauge "rogue.packets_down.msg_heartbeat" server
-  --           metricPacketsPerSecDown_Msg_Ack <- Ekg.getGauge "rogue.packets_down.msg_ack" server
-  --           metricPacketsPerSecDown_Msg_HeartbeatResponse <- Ekg.getGauge "rogue.packets_down.msg_heartbeatresponse" server
-  --           metricPacketsPerSecDown_Msg_AuthInput <- Ekg.getGauge "rogue.packets_down.msg_authinput" server
-  --           metricPacketsPerSecDown_Msg_HintInput <- Ekg.getGauge "rogue.packets_down.msg_hintinput" server
-  --           metricPacketsPerSecDown_Msg_SubmitInput <- Ekg.getGauge "rogue.packets_down.msg_submitinput" server
-  --           metricPacketsPerSecDown_Msg_RequestAuthInput <- Ekg.getGauge "rogue.packets_down.msg_requestauthinput" server
-  --           metricPacketsPerSecUp <- Ekg.getGauge "rogue.packets_per_second_upload" server
-  --           metricBytesPerSecDown <- Ekg.getGauge "rogue.download_bytes_per_s" server
-  --           metricBytesPerSecUp <- Ekg.getGauge "rogue.upload_bytes_per_s" server
-  --           metricPingMs <- Ekg.getGauge "rogue.ping_ms" server
-  --           metricClockErrorMs <- Ekg.getGauge "rogue.clock_error_ms" server
-  --           metricMissingAuthInputTicks <- Ekg.getGauge "rogue.missing_auth_input_ticks" server
-  --           metricMaxAuthWorldTick <- Ekg.getGauge "rogue.max_auth_world_tick" server
-
-  --           -- Collect metrics
-  --           forever $ do
-  --             threadDelay 1000000 -- 1 s
-  --             Tick targetTick <- estimateServerTickPlusLatencyPlusBuffer
-  --             analyticsMay <- clockAnalytics
-  --             case analyticsMay of
-  --               Nothing -> return ()
-  --               Just (pingSec, clockErrorSec) -> do
-  --                 let toMs s = (round (1000 * s))
-  --                 Gauge.set metricPingMs (toMs pingSec)
-  --                 Gauge.set metricClockErrorMs (toMs clockErrorSec)
-
-  --                 let doCount ref g = Gauge.set g =<< IORef.atomicModifyIORef' ref (\x -> (0, x))
-  --                 doCount packetRecvCounterIORef metricPacketsPerSecDown
-  --                 doCount packetRecvCounterIORef_Msg_Connect metricPacketsPerSecDown_Msg_Connect
-  --                 doCount packetRecvCounterIORef_Msg_Connected metricPacketsPerSecDown_Msg_Connected
-  --                 doCount packetRecvCounterIORef_Msg_Heartbeat metricPacketsPerSecDown_Msg_Heartbeat
-  --                 doCount packetRecvCounterIORef_Msg_Ack metricPacketsPerSecDown_Msg_Ack
-  --                 doCount packetRecvCounterIORef_Msg_HeartbeatResponse metricPacketsPerSecDown_Msg_HeartbeatResponse
-  --                 doCount packetRecvCounterIORef_Msg_AuthInput metricPacketsPerSecDown_Msg_AuthInput
-  --                 doCount packetRecvCounterIORef_Msg_HintInput metricPacketsPerSecDown_Msg_HintInput
-  --                 doCount packetRecvCounterIORef_Msg_SubmitInput metricPacketsPerSecDown_Msg_SubmitInput
-  --                 doCount packetRecvCounterIORef_Msg_RequestAuthInput metricPacketsPerSecDown_Msg_RequestAuthInput
-
-  --                 join $
-  --                   atomically $ do
-  --                     playerIdMay <- readTVar myPlayerIdTVar
-  --                     authInputs <- readTVar authInputsTVar
-  --                     let maxAuthTickBroken = fst $ IM.findMax authInputs
-  --                     Tick maxAuthTick <- readTVar maxAuthTickTVar
-  --                     let missingAuthInputTicks = length $ filter (`IM.member` authInputs) [fromIntegral maxAuthTick .. maxAuthTickBroken]
-  --                     authWorlds <- readTVar authWorldsTVar
-  --                     let maxAuthWorldTick = fst $ IM.findMax authWorlds
-  --                     return $ do
-  --                       -- putStrLn $ ""
-  --                       -- putStrLn $ "Max (unbroken) Input tick:      " ++ show' maxAuthTick ++ "   (" ++ showLowIsBetter 13 40 (maxAuthTickBroken - maxAuthTick) ++ " from max)"
-  --                       -- putStrLn $ "Max            Input tick:      " ++ show' maxAuthTickBroken
-  --                       -- putStrLn $ "Missing auth input ticks:       " ++ showLowIsBetter 4 7 missingAuthInputTicks
-  --                       -- putStrLn $ ""
-  --                       -- putStrLn $ "Max auth world tick:            " ++ show' maxAuthWorldTick ++ "   (" ++ showLowIsBetter 13 20 (targetTick - maxAuthWorldTick) ++ " from target)"
-  --                       -- putStrLn $ "Target tick:                    " ++ show' targetTick
-  --                       Label.set metricPlayerLable (maybe "" (T.pack . show . unPlayerId) playerIdMay)
-  --                       Gauge.set metricMissingAuthInputTicks (fromIntegral missingAuthInputTicks)
-  --                       Gauge.set metricMaxAuthWorldTick (fromIntegral maxAuthWorldTick)
-
   -- Keep trying to connect to the server.
   _ <- forkIO $
     forever $ do
@@ -345,29 +257,6 @@ runClientWith sendToServer' rcvFromServer' simNetConditionsMay clientConfig inpu
   _ <- forkIO $
     forever $ do
       msg <- rcvFromServer
-
-      -- TODO Analytics output
-      -- IORef.atomicModifyIORef' packetRecvCounterIORef (\x -> (x + 1, ()))
-      -- case msg of
-      --   Msg_Connect{} ->
-      --     IORef.atomicModifyIORef' packetRecvCounterIORef_Msg_Connect (\x -> (x + 1, ()))
-      --   Msg_Connected{} ->
-      --     IORef.atomicModifyIORef' packetRecvCounterIORef_Msg_Connected (\x -> (x + 1, ()))
-      --   Msg_SubmitInput{} ->
-      --     IORef.atomicModifyIORef' packetRecvCounterIORef_Msg_SubmitInput (\x -> (x + 1, ()))
-      --   Msg_Ack{} ->
-      --     IORef.atomicModifyIORef' packetRecvCounterIORef_Msg_Ack (\x -> (x + 1, ()))
-      --   Msg_RequestAuthInput{} ->
-      --     IORef.atomicModifyIORef' packetRecvCounterIORef_Msg_RequestAuthInput (\x -> (x + 1, ()))
-      --   Msg_Heartbeat{} ->
-      --     IORef.atomicModifyIORef' packetRecvCounterIORef_Msg_Heartbeat (\x -> (x + 1, ()))
-      --   Msg_HeartbeatResponse{} ->
-      --     IORef.atomicModifyIORef' packetRecvCounterIORef_Msg_HeartbeatResponse (\x -> (x + 1, ()))
-      --   Msg_AuthInput{} ->
-      --     IORef.atomicModifyIORef' packetRecvCounterIORef_Msg_AuthInput (\x -> (x + 1, ()))
-      --   Msg_HintInput{} ->
-      --     IORef.atomicModifyIORef' packetRecvCounterIORef_Msg_HintInput (\x -> (x + 1, ()))
-
       case msg of
         Msg_Connect{} -> debugStrLn "Client received unexpected Msg_Connect from the server. Ignoring."
         Msg_Connected playerId -> do
