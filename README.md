@@ -26,8 +26,7 @@
 ## Medium
 
 * [X] Test using non Core functions
-* [ ] Add clocksync settings to client config
-* [ ] Clients prune all but latest auth world (to avoid a memory leak).
+* [X] Clients prune all but latest auth world (to avoid a memory leak).
 
 ## Hard
 
@@ -39,12 +38,13 @@
   * "PRs welcome"
 * [ ] Add duplication (include previously submitted inputs) in Msg_SubmitInputs
   to better handle packet loss!
-  * Like the server, I probably want to have a fixed the packet send loop rate
-    rather than send packets at adhoc locations in the code.
+  * Like the server, I probably want to have a fixed rate packet send loop
+    rather than sending packets at adhoc locations in the code.
 * [ ] Remove Msg_RequestAuthInput
 
 ## Future work
 
+* [ ] Add clocksync settings to client config
 * [ ] CI
 * [ ] Add a `input -> input` prediction parameter to the server?
 * [ ] Metrics

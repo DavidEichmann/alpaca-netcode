@@ -515,8 +515,19 @@ runClientWith sendToServer' rcvFromServer' simNetConditionsMay clientConfig inpu
                         inputsNext = fromMaybe inputsNextHintFilled inputsNextAuthMay
                         wNext = stepOneTick inputsNext tickNext world
 
-                    when isWNextAuth $
-                      atomically $ modifyTVar authWorldsTVar (IM.insert (fromIntegral tickNext) wNext)
+                        pruneOldAuthWorlds = True
+                        -- TODO ^^ in the future we may wan to keep all auth
+                        -- worlds to implement a time traveling debugger
+                    when isWNextAuth
+                      $ atomically $ do
+                        modifyTVar authWorldsTVar (IM.insert (fromIntegral tickNext) wNext)
+                        when pruneOldAuthWorlds $ do
+                          -- We keep all new authworlds as we used them in
+                          -- `newAuthWorlds` and ultimately return them on
+                          -- sample.
+                          lastSampledAuthWorldTick <- readTVar lastSampledAuthWorldTickTVar
+                          modifyTVar authWorldsTVar (snd . IM.split (fromIntegral lastSampledAuthWorldTick))
+
 
                     let predictionAllowance' = if isWNextAuth then predictionAllowance else predictionAllowance - 1
                     predict predictionAllowance' tickNext inputsNext wNext isWNextAuth
