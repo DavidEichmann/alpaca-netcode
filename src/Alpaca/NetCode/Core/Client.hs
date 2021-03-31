@@ -32,16 +32,17 @@ module Alpaca.NetCode.Core.Client
   , clientSample
   , clientSample'
   , clientSetInput
+  , clientStop
   ) where
 
-import Control.Concurrent (forkIO, threadDelay)
+import Control.Concurrent (forkIO, threadDelay, killThread)
 import Control.Concurrent.STM as STM
 import Control.Monad
 import Data.Int (Int64)
 import Data.IntMap (IntMap)
 import qualified Data.IntMap as IM
 import qualified Data.Map as M
-import Data.Maybe (catMaybes, fromMaybe, isJust, isNothing)
+import Data.Maybe (catMaybes, fromMaybe, isJust)
 import qualified Data.Set as S
 import Flat
 
@@ -56,26 +57,32 @@ data Client world input = Client
     -- necessary. This returns:
     --
     -- * New authoritative world states in chronological order since the last
-    --   sample time. These world states are the True world states at each
-    --   tick. This list will be empty if no new authoritative world states have
-    --   been derived since that last call to this sample function. Though it's
-    --   often simpler to just use the predicted world state, you can use these
+    --   sample time. These world states are the True world states at each tick.
+    --   This list will be empty if no new authoritative world states have been
+    --   derived since that last call to this sample function. Though it's often
+    --   simpler to just use the predicted world state, you can use these
     --   authoritative world states to render output when you're not willing to
-    --   miss-predict but are willing to have greater latency.
+    --   miss-predict but are willing to have greater latency. If the client has
+    --   been stopped, this will be an empty list.
+    --
     -- * The predicted world state for the current time. This extrapolates past
     --   the latest know authoritative world state by assuming no user inputs
     --   have changed (unless otherwise known e.g. our own player's inputs are
-    --   known).
+    --   known). If the client has been stopped, this will return the last
+    --   predicted world.
     --
     clientSample' :: IO ([world], world)
   , -- | Set the current input. This will be used on the next tick. In
-    -- godot, you'll likely collect inputs by impelemnting _input or similar
+    -- godot, you'll likely collect inputs by implementing _input or similar
     -- and calling this function.
     clientSetInput :: input -> IO ()
+  , -- | Stop the client.
+    clientStop :: IO ()
   }
 
 -- | Sample the current predicted world state of a client. This will roll back
--- and replay inputs as necessary.
+-- and replay inputs as necessary. If the client has been stopped, this will
+-- return the last sampled world.
 clientSample :: Client world input -> IO world
 clientSample client = snd <$> clientSample' client
 
@@ -246,7 +253,7 @@ runClientWith sendToServer' rcvFromServer' simNetConditionsMay clientConfig inpu
   let estimateServerTickPlusLatencyPlusBuffer = estimateServerTickPlusLatencyPlusBufferPlus 0
 
   -- Keep trying to connect to the server.
-  _ <- forkIO $
+  heartbeatTid <- forkIO $
     forever $ do
       clientSendTime <- getTime
       isConnected <- isJust <$> atomically (readTVar myPlayerIdTVar)
@@ -258,7 +265,7 @@ runClientWith sendToServer' rcvFromServer' simNetConditionsMay clientConfig inpu
           else 50000 -- 0.05 seconds
 
   -- Main message processing loop
-  _ <- forkIO $
+  msgLoopTid <- forkIO $
     forever $ do
       msg <- rcvFromServer
       case msg of
@@ -335,134 +342,152 @@ runClientWith sendToServer' rcvFromServer' simNetConditionsMay clientConfig inpu
           mapM_ debugStrLn res
 
   -- Wait to be connected.
-  atomically $ do
-    myPlayerIdMay <- readTVar myPlayerIdTVar
-    when (isNothing myPlayerIdMay) retry
-    return ()
-
-  -- Now we're connected, start the game loop
-  recentSubmittedInputsTVar <- newTVarIO [(Tick 0, input0)]
-  lastSampledAuthWorldTickTVar :: TVar Tick <- newTVarIO 0 -- last returned auth world tick (inclusive) from the returned sampling funciton
   myPlayerId <- atomically $ do
-    pidMay <- readTVar myPlayerIdTVar
-    maybe retry return pidMay
+    myPlayerIdMay <- readTVar myPlayerIdTVar
+    maybe retry return myPlayerIdMay
+
+  -- Recently submitted inputs and their tick in reverse chronological order.
+  recentSubmittedInputsTVar <- newTVarIO [(Tick 0, input0)]
+  -- last returned auth world tick (inclusive) from the sampling function
+  lastSampledAuthWorldTickTVar :: TVar Tick <- newTVarIO 0
+  -- last returned predicted world from the sampling function
+  lastSampledPredictedWorldTVar :: TVar world <- newTVarIO world0
+  -- Is the client Stopped?
+  stoppedTVar :: TVar Bool <- newTVarIO False
+
   return $ Client
     { clientPlayerId = myPlayerId
     , clientSample' = do
-        -- TODO We can send (non-auth) inputs p2p!
+        stopped <- atomically $ readTVar stoppedTVar
+        if stopped
+        then do
+          lastPredictedWorld <-atomically $  readTVar lastSampledPredictedWorldTVar
+          return ([], lastPredictedWorld)
+        else do
+          -- TODO we're just resimulating from the last snapshot every
+          -- time. We may be able to reuse past simulation data if
+          -- snapshot / inputs haven't changed.
 
-        -- TODO we're just resimulating from the last snapshot every
-        -- time. We may be able to reuse past simulation data if
-        -- snapshot / inputs haven't changed.
+          -- Since we are sending inputs for tick
+          -- estimateServerTickPlusLatencyPlusBuffer and we want to minimize
+          -- perceived input latency, we should target that same tick
+          targetTick <- estimateServerTickPlusLatencyPlusBuffer
+          (inputs, hintInputs, startTickInt, startWorld) <- atomically $ do
+            (startTickInt, startWorld) <-
+              fromMaybe (error $ "No authoritative world found <= " ++ show targetTick) -- We have at least the initial world
+                . IM.lookupLE (fromIntegral targetTick)
+                <$> readTVar authWorldsTVar
+            inputs <- readTVar authInputsTVar
+            hintInputs <- readTVar hintInputsTVar
+            return (inputs, hintInputs, startTickInt, startWorld)
+          let startInputs =
+                fromMaybe
+                  (error $ "Have auth world but no authoritative inputs at " ++ show startTick) -- We assume that we always have auth inputs on ticks where we have auth worlds.
+                  (IM.lookup startTickInt inputs)
+              startTick = Tick (fromIntegral startTickInt)
 
-        -- Since we are sending inputs for tick
-        -- estimateServerTickPlusLatencyPlusBuffer and we want to minimize
-        -- perceived input latency, we should target that same tick
-        targetTick <- estimateServerTickPlusLatencyPlusBuffer
-        (inputs, hintInputs, startTickInt, startWorld) <- atomically $ do
-          (startTickInt, startWorld) <-
-            fromMaybe (error $ "No authoritative world found <= " ++ show targetTick) -- We have at least the initial world
-              . IM.lookupLE (fromIntegral targetTick)
-              <$> readTVar authWorldsTVar
-          inputs <- readTVar authInputsTVar
-          hintInputs <- readTVar hintInputsTVar
-          return (inputs, hintInputs, startTickInt, startWorld)
-        let startInputs =
-              fromMaybe
-                (error $ "Have auth world but no authoritative inputs at " ++ show startTick) -- We assume that we always have auth inputs on ticks where we have auth worlds.
-                (IM.lookup startTickInt inputs)
-            startTick = Tick (fromIntegral startTickInt)
+              predict ::
+                Int64 -> -- How many ticks of prediction to allow
+                Tick -> -- Some tick i
+                M.Map PlayerId input -> -- inputs at tick i
+                world -> -- world at tick i if simulated
+                Bool -> -- Is the world authoritative?
+                IO world -- world at targetTick (or latest tick if predictionAllowance ran out)
+              predict predictionAllowance tick tickInputs world isWAuth = case compare tick targetTick of
+                LT -> do
+                  let tickNext = tick + 1
 
-            predict ::
-              Int64 -> -- How many ticks of prediction to allow
-              Tick -> -- Some tick i
-              M.Map PlayerId input -> -- inputs at tick i
-              world -> -- world at tick i if simulated
-              Bool -> -- Is the world authoritative?
-              IO world -- world at targetTick (or latest tick if predictionAllowance ran out)
-            predict predictionAllowance tick tickInputs world isWAuth = case compare tick targetTick of
-              LT -> do
-                let tickNext = tick + 1
+                      inputsNextAuthMay = inputs IM.!? (fromIntegral tickNext) -- auth input
+                      isInputsNextAuth = isJust inputsNextAuthMay
+                      isWNextAuth = isWAuth && isInputsNextAuth
+                  if isWNextAuth || predictionAllowance > 0
+                    then do
+                      let inputsNextHintPart = fromMaybe M.empty (hintInputs IM.!? (fromIntegral tickNext)) -- partial hint inputs
+                          inputsNextHintFilled = inputsNextHintPart `M.union` tickInputs -- hint input (filled with previous input)
+                          inputsNext = fromMaybe inputsNextHintFilled inputsNextAuthMay
+                          wNext = stepOneTick inputsNext tickNext world
 
-                    inputsNextAuthMay = inputs IM.!? (fromIntegral tickNext) -- auth input
-                    isInputsNextAuth = isJust inputsNextAuthMay
-                    isWNextAuth = isWAuth && isInputsNextAuth
-                if isWNextAuth || predictionAllowance > 0
-                  then do
-                    let inputsNextHintPart = fromMaybe M.empty (hintInputs IM.!? (fromIntegral tickNext)) -- partial hint inputs
-                        inputsNextHintFilled = inputsNextHintPart `M.union` tickInputs -- hint input (filled with previous input)
-                        inputsNext = fromMaybe inputsNextHintFilled inputsNextAuthMay
-                        wNext = stepOneTick inputsNext tickNext world
-
-                        pruneOldAuthWorlds = True
-                        -- TODO ^^ in the future we may wan to keep all auth
-                        -- worlds to implement a time traveling debugger
-                    when isWNextAuth
-                      $ atomically $ do
-                        modifyTVar authWorldsTVar (IM.insert (fromIntegral tickNext) wNext)
-                        when pruneOldAuthWorlds $ do
-                          -- We keep all new authworlds as we used them in
-                          -- `newAuthWorlds` and ultimately return them on
-                          -- sample.
-                          lastSampledAuthWorldTick <- readTVar lastSampledAuthWorldTickTVar
-                          modifyTVar authWorldsTVar (snd . IM.split (fromIntegral lastSampledAuthWorldTick))
+                          pruneOldAuthWorlds = True
+                          -- TODO ^^ in the future we may wan to keep all auth
+                          -- worlds to implement a time traveling debugger
+                      when isWNextAuth
+                        $ atomically $ do
+                          modifyTVar authWorldsTVar (IM.insert (fromIntegral tickNext) wNext)
+                          when pruneOldAuthWorlds $ do
+                            -- We keep all new authworlds as we used them in
+                            -- `newAuthWorlds` and ultimately return them on
+                            -- sample.
+                            lastSampledAuthWorldTick <- readTVar lastSampledAuthWorldTickTVar
+                            modifyTVar authWorldsTVar (snd . IM.split (fromIntegral lastSampledAuthWorldTick))
 
 
-                    let predictionAllowance' = if isWNextAuth then predictionAllowance else predictionAllowance - 1
-                    predict predictionAllowance' tickNext inputsNext wNext isWNextAuth
-                  else return world
-              EQ -> return world
-              GT -> error "Impossible! simulated past target tick!"
+                      let predictionAllowance' = if isWNextAuth then predictionAllowance else predictionAllowance - 1
+                      predict predictionAllowance' tickNext inputsNext wNext isWNextAuth
+                    else return world
+                EQ -> return world
+                GT -> error "Impossible! simulated past target tick!"
 
-        -- If very behind the server, we want to do 0 prediction
-        maxAuthTick <- atomically $ readTVar maxAuthTickTVar
-        let predictionAllowance =
-              if targetTick - maxAuthTick > Tick (fromIntegral $ ccResyncThresholdTicks clientConfig)
-                then 0
-                else fromIntegral (ccMaxPredictionTicks clientConfig)
+          -- If very behind the server, we want to do 0 prediction
+          maxAuthTick <- atomically $ readTVar maxAuthTickTVar
+          let predictionAllowance =
+                if targetTick - maxAuthTick > Tick (fromIntegral $ ccResyncThresholdTicks clientConfig)
+                  then 0
+                  else fromIntegral (ccMaxPredictionTicks clientConfig)
 
-        predictedTargetW <- predict predictionAllowance startTick startInputs startWorld True
-        newAuthWorlds :: [world] <- atomically $ do
-          lastSampledAuthWorldTick <- readTVar lastSampledAuthWorldTickTVar
-          authWorlds <- readTVar authWorldsTVar
-          let latestAuthWorldTick = Tick $ fromIntegral $ fst $ IM.findMax authWorlds
-          writeTVar lastSampledAuthWorldTickTVar latestAuthWorldTick
-          return ((authWorlds IM.!) . fromIntegral <$> [lastSampledAuthWorldTick + 1 .. latestAuthWorldTick])
+          predictedTargetW <- predict predictionAllowance startTick startInputs startWorld True
+          atomically $ writeTVar lastSampledPredictedWorldTVar predictedTargetW
+          newAuthWorlds :: [world] <- atomically $ do
+            lastSampledAuthWorldTick <- readTVar lastSampledAuthWorldTickTVar
+            authWorlds <- readTVar authWorldsTVar
+            let latestAuthWorldTick = Tick $ fromIntegral $ fst $ IM.findMax authWorlds
+            writeTVar lastSampledAuthWorldTickTVar latestAuthWorldTick
+            return ((authWorlds IM.!) . fromIntegral <$> [lastSampledAuthWorldTick + 1 .. latestAuthWorldTick])
 
-        return (newAuthWorlds, predictedTargetW)
+          return (newAuthWorlds, predictedTargetW)
     , clientSetInput =
+      -- TODO We can send (non-auth) inputs p2p!
+
       -- TODO this mechanism minimizes latency when `targetTick > lastTick` by
       -- sending the input to the server immediately, but when `targetTick <=
       -- lastTick`, then the input will be ghosted!
       \newInput -> do
-        -- We submit events as soon as we expect the server to be on a future
-        -- tick. Else we just store the new input.
-        targetTick <- estimateServerTickPlusLatencyPlusBufferPlus (ccFixedInputLatency clientConfig)
-        join $ atomically $ do
-          lastTick <-
-            (\case
-              [] -> Tick 0
-              (t, _) : _ -> t
-            )
-            <$> readTVar recentSubmittedInputsTVar
-          if targetTick > lastTick
-            then do
-              -- Store our own inputs as a hint so we get 0 latency. This is
-              -- only a hint and not authoritative as it's still possible that
-              -- submitted inputs are dropped or rejected by the server. If
-              -- we've jumped a few ticks forward than we keep we don't attempt
-              -- to submit inputs to "fill in the gap". We assume constant as
-              -- the server and other clients predicted those inputs as constant
-              -- anyway.
-              modifyTVar hintInputsTVar
-                $ IM.alter
-                    (Just . M.insert myPlayerId newInput . fromMaybe M.empty)
-                    (fromIntegral targetTick)
+        stopped <- atomically $ readTVar stoppedTVar
+        when (not stopped) $ do
+          -- We submit events as soon as we expect the server to be on a future
+          -- tick. Else we just store the new input.
+          targetTick <- estimateServerTickPlusLatencyPlusBufferPlus (ccFixedInputLatency clientConfig)
+          join $ atomically $ do
+            lastTick <-
+              (\case
+                [] -> Tick 0
+                (t, _) : _ -> t
+              )
+              <$> readTVar recentSubmittedInputsTVar
+            if targetTick > lastTick
+              then do
+                -- Store our own inputs as a hint so we get 0 latency. This is
+                -- only a hint and not authoritative as it's still possible that
+                -- submitted inputs are dropped or rejected by the server. If
+                -- we've jumped a few ticks forward than we keep we don't attempt
+                -- to submit inputs to "fill in the gap". We assume constant as
+                -- the server and other clients predicted those inputs as constant
+                -- anyway.
+                modifyTVar hintInputsTVar
+                  $ IM.alter
+                      (Just . M.insert myPlayerId newInput . fromMaybe M.empty)
+                      (fromIntegral targetTick)
 
-              modifyTVar recentSubmittedInputsTVar $
-                take (ccSubmitInputDuplication clientConfig)
-                . ((targetTick, newInput) :)
-              inputsToSubmit <- readTVar recentSubmittedInputsTVar
-              return (sendToServer (Msg_SubmitInput inputsToSubmit))
-            else pure (return ())
+                modifyTVar recentSubmittedInputsTVar $
+                  take (ccSubmitInputDuplication clientConfig)
+                  . ((targetTick, newInput) :)
+                inputsToSubmit <- readTVar recentSubmittedInputsTVar
+                return (sendToServer (Msg_SubmitInput inputsToSubmit))
+              else pure (return ())
+    , clientStop = do
+        stopped <- atomically (readTVar stoppedTVar)
+        when (not stopped) $ do
+          killThread msgLoopTid
+          killThread heartbeatTid
+          atomically $ do
+            writeTVar stoppedTVar True
     }

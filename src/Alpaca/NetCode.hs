@@ -32,6 +32,7 @@ module Alpaca.NetCode
     Core.clientSample,
     Core.clientSample',
     Core.clientSetInput,
+    Core.clientStop,
     -- ** Types
     Core.Tick (..),
     Core.PlayerId (..),

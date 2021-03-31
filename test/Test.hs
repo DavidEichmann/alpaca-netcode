@@ -19,7 +19,7 @@ import Alpaca.NetCode
   , ServerConfig(..)
   , ClientConfig(..)
   , defaultServerConfig
-  , defaultClientConfig
+  , defaultClientConfig, clientSample
   )
 import qualified Alpaca.NetCode as NC
 import qualified Alpaca.NetCode.Core as Core
@@ -117,7 +117,10 @@ main = defaultMain $ testGroup "alpaca-netcode" $ let
           let k = 100
           length (filter ((>0) . fst) auths0) > k @? "Expected at least " ++ show k ++ " tick with more that 0 players"
 
+          killThread tidServer
+          clientStop client0
           killThread tid0
+          clientStop client1
           killThread tid1
 
           return ()
@@ -152,4 +155,52 @@ main = defaultMain $ testGroup "alpaca-netcode" $ let
           (NC.runServerWith port)
           (NC.runClientWith "localhost" port)
           (NC.runClientWith "localhost" port)
+    , testCase "clientStop" $ do
+        toServer <- newChan
+        toClient <- newChan
+
+        -- Run a server
+        tidServer <- forkIO $ Core.runServerWith
+          (\msg 0 -> writeChan toClient msg)
+          (readChan toServer)
+          Nothing
+          (defaultServerConfig tickRate32)
+          initialInput
+
+        -- A client with Perfect network conditions
+        client <- Core.runClientWith
+          (\msg -> writeChan toServer (msg, 0))
+          (readChan toClient)
+          Nothing
+          (defaultClientConfig tickRate32)
+          initialInput
+          initialWorld
+          stepWorld
+        tidClient <- simulateClient (clientSetInput client)
+
+        threadDelay (2 * 1000000)
+        clientStop client
+        w <- clientSample client
+        threadDelay (1 * 1000000)
+        (authWs', w') <- clientSample' client
+        assertEqual
+          "Sample after clientStop should return the last sampled world"
+          w w'
+        assertEqual
+          "Sample after clientStop should return no new auth worlds"
+          authWs' []
+
+        threadDelay (1 * 1000000)
+        clientStop client
+        (authWs'', w'') <- clientSample' client
+        assertEqual
+          "Sample after SECOND clientStop should return the last sampled world"
+          w w''
+        assertEqual
+          "Sample after clientStop should return no new auth worlds"
+          authWs'' []
+
+        killThread tidServer
+        killThread tidClient
+
     ]

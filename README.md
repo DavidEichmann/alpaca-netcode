@@ -27,6 +27,7 @@
 
 * [X] Test using non Core functions
 * [X] Clients prune all but latest auth world (to avoid a memory leak).
+* [X] Clients can stop themselves (a bit crude right now)
 
 ## Hard
 
@@ -47,7 +48,8 @@
 * [ ] CI
 * [ ] Add a `input -> input` prediction parameter to the server?
 * [ ] Metrics
-* [ ] Clean shutdown and cleanup of threads
-  * Simulated network condition threads
-  * search for forkIO
+* [ ] Clean shutdown and cleanup of forkIO threads
+  * exception handling
+  * Perhaps we can leverage the `async` package
 * [ ] Audit / time traveling debug
+* [ ] Client Disconnect message
