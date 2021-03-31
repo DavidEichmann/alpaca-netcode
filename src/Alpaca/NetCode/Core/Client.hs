@@ -106,6 +106,9 @@ data ClientConfig = ClientConfig
   -- catching up with the server. You may want to scale this value along with
   -- the tick rate. May differ between clients.
   , ccResyncThresholdTicks :: Int
+  -- | When submitting inputs to the server, we also send a copy of recent
+  -- submitted inputs in order to account for dropped messages.
+  , ccSubmitInputDuplication :: Int
   }
 
 -- | Sensible defaults for @ClientConfig@ based on the tick rate.
@@ -120,6 +123,7 @@ defaultClientConfig tickRate = ClientConfig
   , ccFixedInputLatency = 0.03
   , ccMaxPredictionTicks = tickRate `div` 2
   , ccResyncThresholdTicks = tickRate * 3
+  , ccSubmitInputDuplication = 20
   }
 
 -- | Start a client. This blocks until the initial handshake with the
@@ -337,13 +341,8 @@ runClientWith sendToServer' rcvFromServer' simNetConditionsMay clientConfig inpu
     return ()
 
   -- Now we're connected, start the game loop
-  serverTickPlusLatency0 <- estimateServerTickPlusLatencyPlusBuffer
-  currentInputTVar <- newTVarIO input0
-  --   ([], serverTickPlusLatency0, input0)
-  --   -- Collected events (reversed) last submitted inputs tick,
+  recentSubmittedInputsTVar <- newTVarIO [(Tick 0, input0)]
   lastSampledAuthWorldTickTVar :: TVar Tick <- newTVarIO 0 -- last returned auth world tick (inclusive) from the returned sampling funciton
-  lastTickTVar <- newTVarIO serverTickPlusLatency0 -- last submitted input's tick
-  --   -- last tick's input
   myPlayerId <- atomically $ do
     pidMay <- readTVar myPlayerIdTVar
     maybe retry return pidMay
@@ -432,30 +431,38 @@ runClientWith sendToServer' rcvFromServer' simNetConditionsMay clientConfig inpu
 
         return (newAuthWorlds, predictedTargetW)
     , clientSetInput =
+      -- TODO this mechanism minimizes latency when `targetTick > lastTick` by
+      -- sending the input to the server immediately, but when `targetTick <=
+      -- lastTick`, then the input will be ghosted!
       \newInput -> do
         -- We submit events as soon as we expect the server to be on a future
         -- tick. Else we just store the new input.
         targetTick <- estimateServerTickPlusLatencyPlusBufferPlus (ccFixedInputLatency clientConfig)
         join $ atomically $ do
-          -- event (esRev, lastTick, lastInput) -> do
-          lastTick <- readTVar lastTickTVar
-          writeTVar currentInputTVar newInput
+          lastTick <-
+            (\case
+              [] -> Tick 0
+              (t, _) : _ -> t
+            )
+            <$> readTVar recentSubmittedInputsTVar
           if targetTick > lastTick
             then do
-              -- If we've jumped a few ticks forward than we keep the old input
-              -- constant as other clients would have predicte that by now.
-              -- forM_ [lastTick+1..targetTick-1] (commitInput lastInput)
-              writeTVar lastTickTVar targetTick
-
               -- Store our own inputs as a hint so we get 0 latency. This is
               -- only a hint and not authoritative as it's still possible that
-              -- submitted inputs are dropped or rejected by the server.
+              -- submitted inputs are dropped or rejected by the server. If
+              -- we've jumped a few ticks forward than we keep we don't attempt
+              -- to submit inputs to "fill in the gap". We assume constant as
+              -- the server and other clients predicted those inputs as constant
+              -- anyway.
               modifyTVar hintInputsTVar
                 $ IM.alter
                     (Just . M.insert myPlayerId newInput . fromMaybe M.empty)
                     (fromIntegral targetTick)
 
-              -- TODO we need to duplicate send to protect from dropped packets)
-              return (sendToServer (Msg_SubmitInput targetTick newInput))
+              modifyTVar recentSubmittedInputsTVar $
+                take (ccSubmitInputDuplication clientConfig)
+                . ((targetTick, newInput) :)
+              inputsToSubmit <- readTVar recentSubmittedInputsTVar
+              return (sendToServer (Msg_SubmitInput inputsToSubmit))
             else pure (return ())
     }

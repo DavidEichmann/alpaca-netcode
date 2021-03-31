@@ -22,7 +22,6 @@
 * [X] Fix all warnings
 * [X] `Tick` probably shouldn't be an instance of `Semigroup`
 * [X] Remove Msg_RequestAuthInput
-* [ ] Review documentation
 
 ## Medium
 
@@ -31,16 +30,16 @@
 
 ## Hard
 
-* [ ] Top level Documentaton
+* [X] Add duplication (include previously submitted inputs) in Msg_SubmitInputs
+  to better handle packet loss!
+  * Like the server, I probably want to have a fixed rate packet send loop
+    rather than sending packets at adhoc locations in the code.
+* [ ] Documentaton
   * The first documentation the user will read. Module docs? Readme? What shows
     up first on hackage?
 * [ ] An actual README
   * with a clear TODO list
   * "PRs welcome"
-* [ ] Add duplication (include previously submitted inputs) in Msg_SubmitInputs
-  to better handle packet loss!
-  * Like the server, I probably want to have a fixed rate packet send loop
-    rather than sending packets at adhoc locations in the code.
 
 ## Future work
 

@@ -30,13 +30,13 @@ module Alpaca.NetCode.Core.Server
 import Control.Applicative
 import Control.Concurrent (forkIO, killThread, threadDelay)
 import Control.Concurrent.STM as STM
-import Control.Monad (forM_, forever, join, when)
+import Control.Monad (forM_, forever, join, when, forM)
 import Data.Coerce (coerce)
 import Data.IntMap (IntMap)
 import qualified Data.IntMap as IM
 import Data.List (dropWhileEnd, foldl')
 import qualified Data.Map as M
-import Data.Maybe (fromMaybe, isJust, isNothing)
+import Data.Maybe (catMaybes, fromMaybe, isJust, isNothing)
 import Data.Time (getCurrentTime)
 import Flat
 import Prelude
@@ -216,13 +216,13 @@ runServerWith sendToClient' recvFromClient' simNetConditionsMay serverConfig inp
         Msg_Ack clientMaxAuthTick -> do
           atomically $ modifyTVar playersTVar (M.update (\pd -> Just $ pd{maxAuthTick = clientMaxAuthTick}) sender)
           Just <$> getTime
-        Msg_SubmitInput tick input -> do
+        Msg_SubmitInput submittedInputs -> do
           msgMay <- atomically $ do
             -- Check that the sender is connected.
             playerMay <- M.lookup sender <$> readTVar playersTVar
             case playerMay of
-              Nothing -> return $ Just $ "Got Msg_SubmitInput from client that is not yet connected " ++ show sender
-              Just PlayerData{..} -> do
+              Nothing -> return [Just $ "Got Msg_SubmitInput from client that is not yet connected " ++ show sender]
+              Just PlayerData{..} -> forM submittedInputs $ \(tick, input) -> do
                 -- Check that the tick time has not already been simulated.
                 nextTick <- readTVar nextTickTVar
                 -- TODO upper bound on allowed tick time.
@@ -258,7 +258,7 @@ runServerWith sendToClient' recvFromClient' simNetConditionsMay serverConfig inp
                             inputs
 
                         return Nothing
-          mapM_ debugStrLn msgMay
+          mapM_ debugStrLn (catMaybes msgMay)
           Just <$> getTime
 
       -- set receive time for players

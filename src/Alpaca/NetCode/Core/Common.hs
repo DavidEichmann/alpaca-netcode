@@ -220,7 +220,7 @@ data NetMsg input
       (CompactMaps PlayerId input) -- non-auth ticks (hints) starting after the auth ticks
   | -- | A non-authoritative hint for some input.
     Msg_HintInput Tick PlayerId input
-  | Msg_SubmitInput Tick input
+  | Msg_SubmitInput [(Tick, input)]
   deriving stock (Show, Generic)
 
 
