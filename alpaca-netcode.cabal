@@ -48,4 +48,3 @@ test-suite test
                           , random
                           , tasty
                           , tasty-hunit
-                          , tasty-quickcheck

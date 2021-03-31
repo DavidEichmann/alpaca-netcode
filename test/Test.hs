@@ -2,11 +2,6 @@
 
 import Test.Tasty
 import Test.Tasty.HUnit
-import Test.Tasty.QuickCheck as QC
-  ( NonZero (NonZero),
-    counterexample,
-    testProperty,
-  )
 import Control.Concurrent
 import Control.Monad (forever, when)
 import Data.Bits
@@ -16,7 +11,6 @@ import qualified Data.Map as M
 import Data.Int (Int64)
 import System.Random (randomIO)
 import System.Timeout (timeout)
-
 import Alpaca.NetCode
   ( PlayerId(..)
   , Tick(..)
