@@ -260,21 +260,6 @@ runServerWith sendToClient' recvFromClient' simNetConditionsMay serverConfig inp
                         return Nothing
           mapM_ debugStrLn msgMay
           Just <$> getTime
-        Msg_RequestAuthInput ticks -> do
-          (inputs, Tick nextTick) <-
-            atomically $
-              (,) <$> readTVar authInputsTVar
-                <*> readTVar nextTickTVar
-          forM_ (filter (\t -> 0 <= t && t < Tick nextTick) ticks) $ \(Tick tick) -> do
-            let x = inputs IM.! fromIntegral tick
-            sendToClient
-              ( Msg_AuthInput
-                  (Tick tick)
-                  (toCompactMaps [x])
-                  (toCompactMaps [])
-              )
-              sender
-          Just <$> getTime
 
       -- set receive time for players
       forM_ serverReceiveTimeMay $ \serverReceiveTime ->

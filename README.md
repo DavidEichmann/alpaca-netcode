@@ -40,7 +40,7 @@
   to better handle packet loss!
   * Like the server, I probably want to have a fixed rate packet send loop
     rather than sending packets at adhoc locations in the code.
-* [ ] Remove Msg_RequestAuthInput
+* [X] Remove Msg_RequestAuthInput
 
 ## Future work
 

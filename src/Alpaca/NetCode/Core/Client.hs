@@ -382,8 +382,6 @@ runClientWith sendToServer' rcvFromServer' simNetConditionsMay clientConfig inpu
         Msg_SubmitInput{} -> debugStrLn "Client received unexpected Msg_SubmitInput from the server. Ignoring."
         Msg_Ack{} ->
           debugStrLn "Client received unexpected Msg_Ack from the server. Ignoring."
-        Msg_RequestAuthInput{} ->
-          debugStrLn "Client received unexpected Msg_RequestAuthInput from the server. Ignoring."
         Msg_Heartbeat{} ->
           debugStrLn "Client received unexpected Msg_Heartbeat from the server. Ignoring."
         Msg_HeartbeatResponse clientSendTime serverReceiveTime -> do
@@ -433,13 +431,6 @@ runClientWith sendToServer' rcvFromServer' simNetConditionsMay clientConfig inpu
                     )
                     (fromIntegral tick)
 
-            -- Request any missing inputs
-            authInputs <- atomically $ readTVar authInputsTVar
-            authWorlds <- atomically $ readTVar authWorldsTVar
-            let (loTickInt, _) = fromMaybe (error "Impossible! must have at least initial world") (IM.lookupMax authWorlds)
-                (hiTickInt, _) = fromMaybe (error "Impossible! must have at least initial inputs") (IM.lookupMax authInputs)
-                missingTicks = Tick . fromIntegral <$> take (fromIntegral maxRequestAuthInputs) (filter (flip IM.notMember authInputs) [loTickInt + 1 .. hiTickInt - 1])
-            when (not (null missingTicks)) $ sendToServer (Msg_RequestAuthInput missingTicks)
             return resMsg
           mapM_ debugStrLn (catMaybes resMsgs)
         Msg_HintInput tick playerId inputs -> do

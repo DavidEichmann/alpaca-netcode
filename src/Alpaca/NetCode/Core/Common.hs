@@ -221,13 +221,6 @@ data NetMsg input
   | -- | A non-authoritative hint for some input.
     Msg_HintInput Tick PlayerId input
   | Msg_SubmitInput Tick input
-  | -- | Client -> Server: If (despite any duplication) the client did not receive
-    -- auth inputs, the client can request any missing inputs. This case is
-    -- detected once we receive any auth inputs for future ticks. By making the
-    -- client request missing packets, this avoids a possible DOS attack on the
-    -- server compared to an ACK based approach where the client can just never
-    -- ACK.
-    Msg_RequestAuthInput [Tick]
   deriving stock (Show, Generic)
 
 
