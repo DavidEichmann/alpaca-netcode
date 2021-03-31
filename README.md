@@ -25,8 +25,9 @@
 
 ## Medium
 
-* [ ] Test using non Core functions
+* [X] Test using non Core functions
 * [ ] Add clocksync settings to client config
+* [ ] Clients prune all but latest auth world (to avoid a memory leak).
 
 ## Hard
 
@@ -50,3 +51,4 @@
 * [ ] Clean shutdown and cleanup of threads
   * Simulated network condition threads
   * search for forkIO
+* [ ] Audit / time traveling debug

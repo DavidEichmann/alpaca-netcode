@@ -27,6 +27,11 @@ module Alpaca.NetCode
     -- if you'd like to further configure things.
     runServer,
     runClient,
+    Core.Client,
+    Core.clientPlayerId,
+    Core.clientSample,
+    Core.clientSample',
+    Core.clientSetInput,
     -- ** Types
     Core.Tick (..),
     Core.PlayerId (..),
