@@ -1,15 +1,36 @@
 cabal-version:       1.12
 name:                alpaca-netcode
 version:             0.1.0.0
--- synopsis:
--- description:
+synopsis:            Rollback/replay NetCode for realtime, deterministic, multiplayer games.
+description:
+  Alpaca-netcode is a rollback/replay client-server system for realtime
+  multiplayer games. The API only requires you to express your game as a pure,
+  deterministic function.
+  .
+  See "Alpaca.NetCode" to get started.
+  .
+  === Advantages
+  * Simple code. Your game logic contains no NetCode.
+  * Low bandwidth. Only inputs are shared.
+  * Zero latency. Player's own inputs affect their game immediatly.
+  * UDP based. Unordered and using redundancy to mitigate packet loss.
+  * Lightweight server. The server does not run the game logic, it only relays and tracks user inputs.
+  * Cheating. Only inputs are shared which eliminates a whole class state manipulation cheats.
+  .
+  === Disadvantages
+  * Increased CPU usage. Rollback/replay means that clients must run the game step function multiple times per frame.
+  .
+  === Disclaimer
+  This is an initial release with minimal functionality and still very
+  experimental. Use at your own risk.
+
 -- bug-reports:
 license:             Apache-2.0
 license-file:        LICENSE
 author:              David Eichmann
 maintainer:          davide@well-typed.com
 copyright:           2021 David Eichmann
--- category:
+category:            Network, Game Engine
 build-type:          Simple
 extra-source-files:  CHANGELOG.md
 
