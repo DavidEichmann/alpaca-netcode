@@ -120,7 +120,7 @@ data ClientConfig = ClientConfig
     -- mittigate the effect for dropped packets. 'defaultClientConfig'
     -- uses @15@.
     ccSubmitInputDuplication :: Int
-  }
+  } deriving (Show, Read, Eq, Ord)
 
 
 -- | Sensible defaults for @ClientConfig@ based on the tick rate.

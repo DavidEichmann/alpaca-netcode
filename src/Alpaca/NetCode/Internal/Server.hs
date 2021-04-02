@@ -52,7 +52,7 @@ data ServerConfig = ServerConfig
   -- | Seconds of not receiving packets from a client before disconnecting that
   -- client.
   , scClientTimeout :: Float
-  }
+  } deriving (Show, Read, Eq, Ord)
 
 -- | Sensible defaults for @ServerConfig@ based on the tick rate.
 defaultServerConfig ::

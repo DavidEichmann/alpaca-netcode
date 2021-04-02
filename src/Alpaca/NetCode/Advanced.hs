@@ -31,7 +31,9 @@ module Alpaca.NetCode.Advanced
     SimNetConditions (..),
     Tick (..),
     PlayerId (..),
-    NetMsg
+    NetMsg,
+    HostName,
+    ServiceName,
   ) where
 
 import Alpaca.NetCode.Internal.Common

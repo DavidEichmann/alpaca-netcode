@@ -24,18 +24,19 @@
 -- | Rollback and replay based game networking
 module Alpaca.NetCode.Internal.Common where
 
+import Control.Concurrent (forkIO, newChan, readChan, threadDelay, writeChan)
 import Control.Concurrent.STM as STM
+import Control.Monad (forever, when)
+import Data.Hashable (Hashable)
+import Data.Int (Int64)
 import qualified Data.List as L
 import Data.Map (Map)
 import qualified Data.Map as M
 import Data.Time.Clock
 import Data.Word (Word8)
 import Flat
-import Prelude
 import System.Random (randomRIO)
-import Control.Concurrent (forkIO, threadDelay, newChan, writeChan, readChan)
-import Control.Monad (when, forever)
-import Data.Int (Int64)
+import Prelude
 
 
 -- Constants
@@ -43,8 +44,6 @@ import Data.Int (Int64)
 -- Note above, we don't actually step the simulation here. We leave
 -- that all up to the draw function. All we need to do is submit
 -- inputs once per tick to the server.
-
-
 
 -- | How many missing inputs to request at a time
 maxRequestAuthInputs :: Int
@@ -79,12 +78,12 @@ type Duration = Float -- seconds
 -- | The game is broken into discrete ticks starting from 0.
 newtype Tick = Tick Int64
   deriving stock (Show)
-  deriving newtype (Eq, Ord, Num, Enum, Real, Integral, Flat)
+  deriving newtype (Eq, Ord, Num, Enum, Real, Integral, Hashable, Flat)
 
 
 newtype PlayerId = PlayerId {unPlayerId :: Word8}
   deriving stock (Show)
-  deriving newtype (Eq, Ord, Num)
+  deriving newtype (Eq, Ord, Num, Hashable)
 
 
 deriving newtype instance (Flat PlayerId)
@@ -100,7 +99,8 @@ data SimNetConditions = SimNetConditions
     simJitter :: Float
   , -- | Package loss (0 = no packet loss, 1 = 100% packet loss).
     simPackageLoss :: Float
-  }
+  } deriving (Show, Read, Eq, Ord)
+
 
 -- data NetConfig = NetConfig
 --   { -- | Add this latency (in seconds) to all input. Players will experience
@@ -129,24 +129,26 @@ simulateNetConditions ::
   -- | Simulated ping/jitter/packetloss[0-1]
   Maybe SimNetConditions ->
   -- | New send and receive functions.
-  IO ( msg -> IO ()
-     , IO msg
-     )
+  IO
+    ( msg -> IO ()
+    , IO msg
+    )
 simulateNetConditions doSendMsg doRecvMsg simMay = case simMay of
   Nothing -> return (doSendMsg, doRecvMsg)
   Just (SimNetConditions ping jitter loss) -> do
     -- Start a thread that just writes received messages into a chan
     recvChan <- newChan
-    _recvThreadId <- forkIO $ forever $ do
-      msg <- doRecvMsg
-      dropPacket <- (<= loss) <$> randomRIO (0, 1)
-      when (not dropPacket) $ do
-        _ <- forkIO $ do
-          jitterT <- randomRIO (negate jitter, jitter)
-          let latency = max 0 ((ping / 2) + jitterT)
-          threadDelay (round $ latency * 1000000)
-          writeChan recvChan msg
-        return ()
+    _recvThreadId <- forkIO $
+      forever $ do
+        msg <- doRecvMsg
+        dropPacket <- (<= loss) <$> randomRIO (0, 1)
+        when (not dropPacket) $ do
+          _ <- forkIO $ do
+            jitterT <- randomRIO (negate jitter, jitter)
+            let latency = max 0 ((ping / 2) + jitterT)
+            threadDelay (round $ latency * 1000000)
+            writeChan recvChan msg
+          return ()
     return
       ( -- Sending a message just starts a thread that delays the send.
         \msg -> do
