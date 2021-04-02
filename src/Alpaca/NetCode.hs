@@ -50,6 +50,43 @@ import Network.Socket (
 -- | Start a client. This blocks until the initial handshake with the server is
 -- finished. You must call 'clientSetInput' on the returned client to submit new
 -- inputs.
+--
+-- Think of @world@ as shared state between all clients. Alpaca NetCode takes
+-- care of synchronizing and predicting the @world@ state across all clients.
+-- Additionally, clock synchronization is done with the server and the "current"
+-- tick is decided for you when sampling with `clientSample`.
+--
+-- Typical usage looks like this:
+--
+-- @
+--    main :: IO ()
+--    main = do
+--      myClient <- runClient "localhost" "8111" 30 myInput0 myWorld0 worldStep
+--      let myPlayerId = clientPlayerId myClient
+--
+--      mainGameLoop $ do
+--        myInput <- pollInput          -- Poll inputs from some other library
+--        clientSetInput myClient       -- Push inputs to Alpaca NetCode
+--        world <- clientSample         -- Sample the current (predicted) world
+--        renderWorld myPlayerId world  -- Render the world
+--
+--        -- You're free to do IO and maintain state local to the client.
+--
+--        return (gameIsOver world)     -- Return True to keep looping
+--
+--    clientStop myClient
+--
+--    -- Given
+--    data World = World { .. }
+--    data Input = Input { .. } deriving (Generic, Eq, Flat)
+--    myWorld0 :: World
+--    gameIsOver :: World -> Bool
+--    myInput0 :: Input
+--    worldStep :: Map PlayerId Input -> Tick -> World -> World
+--    renderWorld :: PlayerId -> World -> IO ()
+--    pollInput :: IO Input
+--    mainGameLoop :: IO Bool -> IO ()
+-- @
 runClient ::
   forall world input.
   Flat input =>
@@ -72,8 +109,10 @@ runClient ::
   input ->
   -- | Initial world state. Must be the same across all clients.
   world ->
-  -- | A deterministic stepping function (for a single tick). Must be the same
-  -- across all clients and the server. Takes:
+  -- | A deterministic stepping function (for a single tick). In practice you
+  -- can choose to use whatever monad stack within as long as you (un)wrap into
+  -- a pure function e.g. you can use `ST` as long as you wrap it in `runST`.
+  -- Must be the same across all clients and the server. Takes:
   --
   -- * a map from PlayerId to current input. You can use the key set as the set
   --   of all connected players.
