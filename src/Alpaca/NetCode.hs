@@ -42,10 +42,6 @@ import qualified Data.Map as M
 import Flat (
   Flat,
  )
-import Network.Socket (
-  HostName,
-  ServiceName,
- )
 
 -- | Start a client. This blocks until the initial handshake with the server is
 -- finished. You must call 'clientSetInput' on the returned client to submit new
