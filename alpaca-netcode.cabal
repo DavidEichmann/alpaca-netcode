@@ -3,9 +3,8 @@ name:                alpaca-netcode
 version:             0.1.0.0
 synopsis:            Rollback/replay NetCode for realtime, deterministic, multiplayer games.
 description:
-  Alpaca-netcode is a rollback/replay client-server system for realtime
-  multiplayer games. The API only requires you to express your game as a pure,
-  deterministic function.
+  A rollback/replay client-server system for realtime multiplayer games. The API
+  only requires you to express your game as a pure, deterministic function.
   .
   See "Alpaca.NetCode" to get started.
   .
