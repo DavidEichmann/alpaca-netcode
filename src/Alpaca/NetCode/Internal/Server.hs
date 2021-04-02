@@ -21,7 +21,7 @@
 
 -- | Rollback and replay based game networking
 module Alpaca.NetCode.Internal.Server
-  ( runServerWithChan
+  ( runServerWith'
   , ServerConfig (..)
   , defaultServerConfig
   ) where
@@ -45,9 +45,9 @@ import Alpaca.NetCode.Internal.Common
 -- | Configuration options specific to the server.
 data ServerConfig = ServerConfig
   {
-  -- | Tick rate (ticks per second). Must be the same across all clients and the
-  -- server. Packet rate and hence network bandwidth will scale linearly with
-  -- this the tick rate.
+  -- | Tick rate (ticks per second). Typically @30@ or @60@. Must be the same
+  -- across all clients and the server. Packet rate and hence network bandwidth
+  -- will scale linearly with this the tick rate.
     scTickRate :: Int
   -- | Seconds of not receiving packets from a client before disconnecting that
   -- client.
@@ -56,9 +56,9 @@ data ServerConfig = ServerConfig
 
 -- | Sensible defaults for @ServerConfig@ based on the tick rate.
 defaultServerConfig ::
-  -- | Tick rate (ticks per second). Must be the same across all clients and the
-  -- server. Packet rate and hence network bandwidth will scale linearly with
-  -- this the tick rate.
+  -- | Tick rate (ticks per second). Typically @30@ or @60@. Must be the same
+  -- across all clients and the server. Packet rate and hence network bandwidth
+  -- will scale linearly with this the tick rate.
   Int
   -> ServerConfig
 defaultServerConfig tickRate = ServerConfig
@@ -68,7 +68,7 @@ defaultServerConfig tickRate = ServerConfig
 
 -- | Run a server for a single game. This will block until the game ends,
 -- specifically when all players have disconnected.
-runServerWithChan ::
+runServerWith' ::
   forall input clientAddress.
   ( Eq input
   , Flat input
@@ -79,18 +79,19 @@ runServerWithChan ::
   -- protocol need only guarantee data integrity but is otherwise free to drop
   -- and reorder packets. Typically this is backed by a UDP socket.
   (NetMsg input -> clientAddress -> IO ()) ->
-  -- | Chan to receive messages from clients. Has the same requirements as
-  -- the send TChan.
+  -- | Blocking function to receive messages from the clients. Has the same
+  -- reliability requirements as the send function.
   (IO (NetMsg input, clientAddress)) ->
   -- | Optional simulation of network conditions. In production this should be
   -- `Nothing`. May differ between clients.
   Maybe SimNetConditions ->
   -- | The 'defaultServerConfig' works well for most cases.
   ServerConfig ->
-  -- | Initial input for new players.
+  -- | Initial input for new players. Must be the same across all clients and
+  -- the server. See 'Alpaca.NetCode.runClient'.
   input ->
   IO ()
-runServerWithChan sendToClient' recvFromClient' simNetConditionsMay serverConfig input0 = playCommon (scTickRate serverConfig) $ \tickTime getTime resetTime -> forever $ do
+runServerWith' sendToClient' recvFromClient' simNetConditionsMay serverConfig input0 = playCommon (scTickRate serverConfig) $ \tickTime getTime resetTime -> forever $ do
   (sendToClient'', recvFromClient) <- simulateNetConditions
     (uncurry sendToClient')
     recvFromClient'

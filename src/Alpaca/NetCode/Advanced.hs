@@ -84,9 +84,9 @@ import qualified Network.Socket.ByteString as NBS
 runClientWith ::
   forall world input.
   Flat input =>
-  -- | The server's host name or IP address.
+  -- | The server's host name or IP address e.g. @"localhost"@.
   HostName ->
-  -- | The server's port number.
+  -- | The server's port number e.g. @"8111"@.
   ServiceName ->
   -- | Optional simulation of network conditions. In production this should be
   -- `Nothing`. May differ between clients.
@@ -94,19 +94,12 @@ runClientWith ::
   -- | The 'defaultClientConfig' works well for most cases.
   ClientConfig ->
   -- | Initial input for new players. Must be the same across all clients and
-  -- the server.
+  -- the server. See 'Alpaca.NetCode.runClient'.
   input ->
   -- | Initial world state. Must be the same across all clients.
   world ->
   -- | A deterministic stepping function (for a single tick). Must be the same
-  -- across all clients and the server. Takes:
-  --
-  -- * a map from PlayerId to current input.
-  -- * current game tick.
-  -- * previous tick's world state
-  --
-  -- It is important that this is deterministic else clients' states will
-  -- diverge. Beware of floating point non-determinism!
+  -- across all clients and the server. See 'Alpaca.NetCode.runClient'.
   ( M.Map PlayerId input ->
     Tick ->
     world ->
@@ -134,7 +127,7 @@ runClientWith
           msg <- readChan sendChan
           NBS.sendAllTo sock (flat msg) server
 
-    runClientWithChan
+    runClientWith'
       (writeChan sendChan)
       (readChan recvChan)
       simNetConditionsMay
@@ -176,14 +169,15 @@ runClientWith
 runServerWith ::
   forall input.
   (Eq input, Flat input) =>
-  -- | The server's port number.
+  -- | The server's port number e.g. @"8111"@.
   ServiceName ->
   -- | Optional simulation of network conditions. In production this should be
   -- `Nothing`.
   Maybe SimNetConditions ->
   -- | The 'defaultServerConfig' works well for most cases.
   ServerConfig ->
-  -- | Initial input for new players. Must be the same across all host/clients.
+  -- | Initial input for new players. Must be the same across all clients and
+  -- the server.
   input ->
   IO ()
 runServerWith serverPort tickRate netConfig input0 = do
@@ -198,7 +192,7 @@ runServerWith serverPort tickRate netConfig input0 = do
         (msg, addr) <- readChan sendChan
         NBS.sendAllTo sock (flat msg) addr
 
-  runServerWithChan
+  runServerWith'
     (curry (writeChan sendChan))
     (readChan recvChan)
     tickRate

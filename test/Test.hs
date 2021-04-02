@@ -123,7 +123,7 @@ main = defaultMain $ testGroup "alpaca-netcode" $ let
         toClient1 <- newChan
 
         test
-          (runServerWithChan
+          (runServerWith'
             (\msg (client :: Int64) -> case client of
               0 -> writeChan toClient0 msg
               1 -> writeChan toClient1 msg
@@ -131,11 +131,11 @@ main = defaultMain $ testGroup "alpaca-netcode" $ let
             )
             (readChan toServer)
           )
-          ( runClientWithChan
+          ( runClientWith'
               (\msg -> writeChan toServer (msg, 0))
               (readChan toClient0)
           )
-          (runClientWithChan
+          (runClientWith'
             (\msg -> writeChan toServer (msg, 1))
             (readChan toClient1)
           )
@@ -150,7 +150,7 @@ main = defaultMain $ testGroup "alpaca-netcode" $ let
         toClient <- newChan
 
         -- Run a server
-        tidServer <- forkIO $ runServerWithChan
+        tidServer <- forkIO $ runServerWith'
           (\msg 0 -> writeChan toClient msg)
           (readChan toServer)
           Nothing
@@ -158,7 +158,7 @@ main = defaultMain $ testGroup "alpaca-netcode" $ let
           initialInput
 
         -- A client with Perfect network conditions
-        client <- runClientWithChan
+        client <- runClientWith'
           (\msg -> writeChan toServer (msg, 0))
           (readChan toClient)
           Nothing

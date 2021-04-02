@@ -19,6 +19,7 @@ description:
   .
   === Disadvantages
   * Increased CPU usage. Rollback/replay means that clients must run the game step function multiple times per frame.
+  * Not suitable for large numbers of players. Tens of players is likey reasonable.
   .
   === Disclaimer
   This is an initial release with minimal functionality and still very

@@ -23,7 +23,7 @@
 
 -- | Rollback and replay based game networking
 module Alpaca.NetCode.Internal.Client
-  ( runClientWithChan
+  ( runClientWith'
   , ClientConfig (..)
   , defaultClientConfig
   , Client
@@ -48,11 +48,11 @@ import Flat
 import Alpaca.NetCode.Internal.ClockSync
 import Alpaca.NetCode.Internal.Common
 
--- | A Client. You'll generally obtain this via @Alpaca.NetCode.runClientWithChan@.
+-- | A Client. You'll generally obtain this via @Alpaca.NetCode.runClient@.
 data Client world input = Client
   { -- | The client's @PlayerId@
     clientPlayerId :: PlayerId
-  , -- | Sample the world state. This will roll back and replay inputs as
+  , -- | Sample the world state. This will rollback and replay inputs as
     -- necessary. This returns:
     --
     -- * New authoritative world states in chronological order since the last
@@ -64,56 +64,59 @@ data Client world input = Client
     --   miss-predict but are willing to have greater latency. If the client has
     --   been stopped, this will be an empty list.
     --
-    -- * The predicted world state for the current time. This extrapolates past
-    --   the latest know authoritative world state by assuming no user inputs
-    --   have changed (unless otherwise known e.g. our own player's inputs are
-    --   known). If the client has been stopped, this will return the last
-    --   predicted world.
+    -- * The predicted current world state. This extrapolates past the latest
+    --   know authoritative world state by assuming no user inputs have changed
+    --   (unless otherwise known e.g. our own player's inputs are known). If the
+    --   client has been stopped, this will return the last predicted world.
     --
     clientSample' :: IO ([world], world)
-  , -- | Set the current input. This will be used on the next tick. In
-    -- godot, you'll likely collect inputs by implementing _input or similar
-    -- and calling this function.
+  , -- | Set the client's current input.
     clientSetInput :: input -> IO ()
   , -- | Stop the client.
     clientStop :: IO ()
   }
 
--- | Sample the current predicted world state of a client. This will roll back
--- and replay inputs as necessary. If the client has been stopped, this will
--- return the last sampled world.
+-- | Sample the current world state.
+--
+-- This extrapolates past the latest know authoritative world state by assuming
+-- no user inputs have changed (unless otherwise known e.g. our own player's
+-- inputs are known). If the client has been stopped, this will return the last
+-- predicted world.
 clientSample :: Client world input -> IO world
 clientSample client = snd <$> clientSample' client
 
 -- | Configuration options specific to clients.
 data ClientConfig = ClientConfig
   {
-  -- | Tick rate (ticks per second). Must be the same across all clients and the
-  -- server. Packet rate and hence network bandwidth will scale linearly with
-  -- this the tick rate.
+  -- | Tick rate (ticks per second). Typically @30@ or @60@. Must be the same
+  -- across all clients and the server. Packet rate and hence network bandwidth
+  -- will scale linearly with this the tick rate.
     ccTickRate :: Int
   -- | Add this constant amount of latency (in seconds) to this client's inputs.
-  -- A good value is 0.03 or something between 0 and 0.1. May differ between
-  -- clients.
+  -- A good value is @0.03@ or something between @0@ and @0.1@. May differ
+  -- between clients.
   --
   -- Too high of a value and the player will get annoyed at the extra input
-  -- latency. On the other hand, a higher value means less miss-predictions for
-  -- other clients. In the extreme case, if this is set to something higher than
-  -- ping, there will be no miss predictions: all clients will receive inputs
-  -- before rendering the corresponding tick.
+  -- latency. On the other hand, a higher value means less miss-predictions of
+  -- other clients. In the extreme case, set to something higher than ping,
+  -- there will be no miss predictions: all clients will receive inputs before
+  -- rendering the corresponding tick.
   , ccFixedInputLatency :: Float
-  -- | Maximum number of ticks to predict. If the client is this many ticks
-  -- behind the target tick, it will simply stop at an earlier tick. You may
-  -- want to scale this value along with the tick rate. May differ between
-  -- clients.
+  -- | Maximum number of ticks to predict when sampling. 'defaultClientConfig'
+  -- uses @ccTickRate / 2@. If the client is this many ticks behind the current
+  -- tick, it will simply stop at an earlier tick. You may want to scale this
+  -- value along with the tick rate. May differ between clients.
   , ccMaxPredictionTicks :: Int
-  -- | If the client's latest auth world is this many ticks behind the target
-  -- tick, no prediction will be done at all. We want to safe CPU cycles for
-  -- catching up with the server. You may want to scale this value along with
-  -- the tick rate. May differ between clients.
+  -- | If the client's latest known authoritative world is this many ticks
+  -- behind the current tick, no prediction will be done at all when sampling.
+  -- 'defaultClientConfig' uses @ccTickRate * 3@. Useful because want to save
+  -- CPU cycles for catching up with the server. You may want to scale this
+  -- value along with the tick rate. May differ between clients.
   , ccResyncThresholdTicks :: Int
-  -- | When submitting inputs to the server, we also send a copy of recent
-  -- submitted inputs in order to account for dropped messages.
+  -- | When submitting inputs to the server, we also send a copy of
+  -- @ccSubmitInputDuplication@ many recently submitted inputs in order to
+  -- mittigate the effect for dropped packets. 'defaultClientConfig'
+  -- uses @15@.
   , ccSubmitInputDuplication :: Int
   }
 
@@ -129,20 +132,20 @@ defaultClientConfig tickRate = ClientConfig
   , ccFixedInputLatency = 0.03
   , ccMaxPredictionTicks = tickRate `div` 2
   , ccResyncThresholdTicks = tickRate * 3
-  , ccSubmitInputDuplication = 20
+  , ccSubmitInputDuplication = 15
   }
 
 -- | Start a client. This blocks until the initial handshake with the
 -- server is finished.
-runClientWithChan ::
+runClientWith' ::
   forall world input.
   Flat input =>
   -- | Function to send messages to the server. The underlying communication
   -- protocol need only guarantee data integrity but is otherwise free to drop
   -- and reorder packets. Typically this is backed by a UDP socket.
   (NetMsg input -> IO ()) ->
-  -- | Chan to receive messages from the server. Has the same requirements as
-  -- the send TChan.
+  -- | Blocking function to receive messages from the server. Has the same
+  -- reliability requirements as the send function.
   (IO (NetMsg input)) ->
   -- | Optional simulation of network conditions. In production this should be
   -- `Nothing`. May differ between clients.
@@ -150,26 +153,19 @@ runClientWithChan ::
   -- | The 'defaultClientConfig' works well for most cases.
   ClientConfig ->
   -- | Initial input for new players. Must be the same across all clients and
-  -- the server.
+  -- the server. See 'Alpaca.NetCode.runClient'.
   input ->
   -- | Initial world state. Must be the same across all clients.
   world ->
   -- | A deterministic stepping function (for a single tick). Must be the same
-  -- across all clients and the server. Takes:
-  --
-  -- * a map from PlayerId to current input.
-  -- * current game tick.
-  -- * previous tick's world state
-  --
-  -- It is important that this is deterministic else clients' states will
-  -- diverge. Beware of floating point non-determinism!
+  -- across all clients and the server. See 'Alpaca.NetCode.runClient'.
   ( M.Map PlayerId input ->
     Tick ->
     world ->
     world
   ) ->
   IO (Client world input)
-runClientWithChan sendToServer' rcvFromServer' simNetConditionsMay clientConfig input0 world0 stepOneTick = playCommon (ccTickRate clientConfig) $ \tickTime getTime _resetTime -> do
+runClientWith' sendToServer' rcvFromServer' simNetConditionsMay clientConfig input0 world0 stepOneTick = playCommon (ccTickRate clientConfig) $ \tickTime getTime _resetTime -> do
   (sendToServer, rcvFromServer) <- simulateNetConditions
     sendToServer'
     rcvFromServer'
