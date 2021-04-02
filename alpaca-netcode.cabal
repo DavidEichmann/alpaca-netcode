@@ -40,13 +40,13 @@ source-repository head
 
 library
   other-modules:
-      Alpaca.NetCode.Core.Client
-    , Alpaca.NetCode.Core.ClockSync
-    , Alpaca.NetCode.Core.Common
-    , Alpaca.NetCode.Core.Server
+      Alpaca.NetCode.Internal.Client
+    , Alpaca.NetCode.Internal.ClockSync
+    , Alpaca.NetCode.Internal.Common
+    , Alpaca.NetCode.Internal.Server
   exposed-modules:
       Alpaca.NetCode
-    , Alpaca.NetCode.Core
+    , Alpaca.NetCode.Advanced
   build-depends:       base
                      , bytestring
                      , containers

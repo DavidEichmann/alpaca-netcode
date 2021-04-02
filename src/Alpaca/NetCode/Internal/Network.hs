@@ -20,7 +20,7 @@
 {-# LANGUAGE TypeFamilies #-}
 
 -- | Rollback and replay based game networking
-module Alpaca.NetCode.Core.Server
+module Alpaca.NetCode.Internal.Server
   ( runServer
   , runServerWith
   , ServerConfig (..)

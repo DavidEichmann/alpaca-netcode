@@ -12,17 +12,7 @@ import Data.Int (Int64)
 import System.Random (randomIO)
 import System.Timeout (timeout)
 import Alpaca.NetCode
-  ( PlayerId(..)
-  , Tick(..)
-  , Client(..)
-  , SimNetConditions(..)
-  , ServerConfig(..)
-  , ClientConfig(..)
-  , defaultServerConfig
-  , defaultClientConfig, clientSample
-  )
-import qualified Alpaca.NetCode as NC
-import qualified Alpaca.NetCode.Core as Core
+import Alpaca.NetCode.Advanced
 import Data.Maybe (fromMaybe)
 import Data.List (foldl')
 
@@ -133,7 +123,7 @@ main = defaultMain $ testGroup "alpaca-netcode" $ let
         toClient1 <- newChan
 
         test
-          (Core.runServerWith
+          (runServerWithChan
             (\msg (client :: Int64) -> case client of
               0 -> writeChan toClient0 msg
               1 -> writeChan toClient1 msg
@@ -141,26 +131,26 @@ main = defaultMain $ testGroup "alpaca-netcode" $ let
             )
             (readChan toServer)
           )
-          ( Core.runClientWith
+          ( runClientWithChan
               (\msg -> writeChan toServer (msg, 0))
               (readChan toClient0)
           )
-          (Core.runClientWith
+          (runClientWithChan
             (\msg -> writeChan toServer (msg, 1))
             (readChan toClient1)
           )
     , testCase "UDP [NOCI]" $ do
         let port = "8888"
         test
-          (NC.runServerWith port)
-          (NC.runClientWith "localhost" port)
-          (NC.runClientWith "localhost" port)
+          (runServerWith port)
+          (runClientWith "localhost" port)
+          (runClientWith "localhost" port)
     , testCase "clientStop" $ do
         toServer <- newChan
         toClient <- newChan
 
         -- Run a server
-        tidServer <- forkIO $ Core.runServerWith
+        tidServer <- forkIO $ runServerWithChan
           (\msg 0 -> writeChan toClient msg)
           (readChan toServer)
           Nothing
@@ -168,7 +158,7 @@ main = defaultMain $ testGroup "alpaca-netcode" $ let
           initialInput
 
         -- A client with Perfect network conditions
-        client <- Core.runClientWith
+        client <- runClientWithChan
           (\msg -> writeChan toServer (msg, 0))
           (readChan toClient)
           Nothing

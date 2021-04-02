@@ -20,9 +20,9 @@
 {-# LANGUAGE TypeFamilies #-}
 
 -- | Rollback and replay based game networking
-module Alpaca.NetCode.Core.ClockSync where
+module Alpaca.NetCode.Internal.ClockSync where
 
-import Alpaca.NetCode.Core.Common
+import Alpaca.NetCode.Internal.Common
 import Control.Concurrent.STM
 import Data.Maybe (fromMaybe)
 

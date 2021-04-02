@@ -22,7 +22,7 @@
 {-# LANGUAGE ViewPatterns #-}
 
 -- | Rollback and replay based game networking
-module Alpaca.NetCode.Core.Common where
+module Alpaca.NetCode.Internal.Common where
 
 import Control.Concurrent.STM as STM
 import qualified Data.List as L
