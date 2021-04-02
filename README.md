@@ -1,24 +1,30 @@
-# TODO Documentaton
+# Alpaca NetCode
 
-* [ ] Move everything execpt the simple api into Advanced module
-* [ ] Cabal package description etc.
-  * Clear summary + elevator pitch
-  * Pointing to Alpaca.NetCode for more documentation
-* [ ] Documentaton
-  * The first documentation the user will read. Module docs? Readme? What shows
-    up first on hackage?
-* [ ] An actual README
-  * with a clear TODO list
-  * "PRs welcome"
+A rollback/replay client-server system for realtime multiplayer games. The API
+only requires you to express your game as a pure, deterministic function.
 
-## Future work
+## Advantages
 
-* [ ] Add clocksync settings to client config
-* [ ] CI
-* [ ] Add a `input -> input` prediction parameter to the server?
-* [ ] Metrics
-* [ ] Clean shutdown and cleanup of forkIO threads
-  * exception handling
-  * Perhaps we can leverage the `async` package
-* [ ] Audit / time traveling debug
-* [ ] Client Disconnect message
+* Simple code. Your game logic contains no NetCode.
+* Low bandwidth. Only inputs are shared.
+* Zero latency. Player's own inputs affect their game immediatly.
+* UDP based. Unordered and using redundancy to mitigate packet loss.
+* Lightweight server. The server does not run the game logic, it only relays and tracks user inputs.
+* Cheating. Only inputs are shared which eliminates a whole class state manipulation cheats.
+
+## Disadvantages
+
+* Increased CPU usage. Rollback/replay means that clients must run the game step function multiple times per frame.
+* Not suitable for large numbers of players. Tens of players is likey reasonable.
+
+## Disclaimer
+
+This is an initial release with minimal functionality and still very
+experimental. Use at your own risk.
+
+## Contributing
+
+PRs, feadback, and feature requests welcome. See the [Roadmap
+issue](https://github.com/DavidEichmann/alpaca-netcode/issues/1) for ideas. Or
+ping @DavidE on the [Haskell GameDev](https://discord.gg/T7kJSq8C) discord
+server.
