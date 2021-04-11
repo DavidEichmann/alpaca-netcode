@@ -22,26 +22,29 @@
 
 -- | This module should be all you need to get started writing multiplayer
 -- games. See "Alpaca.NetCode.Advanced" for more advanced usage.
-module Alpaca.NetCode
-  ( runServer,
-    runClient,
-    Client,
-    clientPlayerId,
-    clientSample,
-    clientSetInput,
-    clientStop,
-    -- ** Types
-    Tick (..),
-    PlayerId (..),
-    HostName,
-    ServiceName,
-  ) where
+module Alpaca.NetCode (
+  runServer,
+  runClient,
+  Client,
+  clientPlayerId,
+  clientSample,
+  clientSetInput,
+  clientStop,
+
+  -- ** Types
+  Tick (..),
+  PlayerId (..),
+  HostName,
+  ServiceName,
+) where
 
 import Alpaca.NetCode.Advanced
 import qualified Data.Map as M
 import Flat (
   Flat,
  )
+import Prelude
+
 
 -- | Start a client. This blocks until the initial handshake with the server is
 -- finished. You must call 'clientSetInput' on the returned client to submit new
@@ -129,8 +132,8 @@ runClient
   tickRate
   input0
   world0
-  stepOneTick
-  = runClientWith
+  stepOneTick =
+    runClientWith
       serverHostName
       serverPort
       Nothing
@@ -138,6 +141,7 @@ runClient
       input0
       world0
       stepOneTick
+
 
 -- | Run a server for a single game. This will block until the game ends,
 -- specifically when all players have disconnected.
@@ -157,8 +161,8 @@ runServer ::
 runServer
   serverPort
   tickRate
-  input0
-  = runServerWith
+  input0 =
+    runServerWith
       serverPort
       Nothing
       (defaultServerConfig tickRate)

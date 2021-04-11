@@ -20,24 +20,26 @@
 {-# LANGUAGE TypeFamilies #-}
 
 -- | Rollback and replay based game networking
-module Alpaca.NetCode.Advanced
-  ( -- * Server
-    runServerWith,
-    module Alpaca.NetCode.Internal.Server,
-    -- * Client
-    runClientWith,
-    module Alpaca.NetCode.Internal.Client,
-    -- * Common Types
-    SimNetConditions (..),
-    Tick (..),
-    PlayerId (..),
-    NetMsg,
-    HostName,
-    ServiceName,
-  ) where
+module Alpaca.NetCode.Advanced (
+  -- * Server
+  runServerWith,
+  module Alpaca.NetCode.Internal.Server,
 
-import Alpaca.NetCode.Internal.Common
+  -- * Client
+  runClientWith,
+  module Alpaca.NetCode.Internal.Client,
+
+  -- * Common Types
+  SimNetConditions (..),
+  Tick (..),
+  PlayerId (..),
+  NetMsg,
+  HostName,
+  ServiceName,
+) where
+
 import Alpaca.NetCode.Internal.Client
+import Alpaca.NetCode.Internal.Common
 import Alpaca.NetCode.Internal.Server
 import Control.Concurrent (
   Chan,
@@ -80,6 +82,8 @@ import Network.Socket (
   withSocketsDo,
  )
 import qualified Network.Socket.ByteString as NBS
+import Prelude
+
 
 -- | Start a client. This blocks until the initial handshake with the server is
 -- finished.
@@ -137,34 +141,35 @@ runClientWith
       input0
       world0
       stepOneTick
- where
-  --
-  -- Coppied from network-run
-  --
-
-  runUDPClient' ::
-    HostName -> ServiceName -> (Socket -> SockAddr -> IO a) -> IO a
-  runUDPClient' host port client = withSocketsDo $ do
-    addr <- resolve Datagram (Just host) port False
-    let sockAddr = addrAddress addr
-    E.bracket (openSocket addr) close $ \sock -> client sock sockAddr
-
-  resolve :: SocketType -> Maybe HostName -> ServiceName -> Bool -> IO AddrInfo
-  resolve socketType mhost port passive =
-    head
-      <$> getAddrInfo (Just hints) mhost (Just port)
    where
-    hints =
-      defaultHints
-        { addrSocketType = socketType
-        , addrFlags = if passive then [AI_PASSIVE] else []
-        }
+    --
+    -- Coppied from network-run
+    --
 
-  openSocket :: AddrInfo -> IO Socket
-  openSocket addr = do
-    sock <- socket (addrFamily addr) (addrSocketType addr) (addrProtocol addr)
-    connect sock (addrAddress addr)
-    return sock
+    runUDPClient' ::
+      HostName -> ServiceName -> (Socket -> SockAddr -> IO a) -> IO a
+    runUDPClient' host port client = withSocketsDo $ do
+      addr <- resolve Datagram (Just host) port False
+      let sockAddr = addrAddress addr
+      E.bracket (openSocket addr) close $ \sock -> client sock sockAddr
+
+    resolve :: SocketType -> Maybe HostName -> ServiceName -> Bool -> IO AddrInfo
+    resolve socketType mhost port passive =
+      head
+        <$> getAddrInfo (Just hints) mhost (Just port)
+     where
+      hints =
+        defaultHints
+          { addrSocketType = socketType
+          , addrFlags = if passive then [AI_PASSIVE] else []
+          }
+
+    openSocket :: AddrInfo -> IO Socket
+    openSocket addr = do
+      sock <- socket (addrFamily addr) (addrSocketType addr) (addrProtocol addr)
+      connect sock (addrAddress addr)
+      return sock
+
 
 -- | Run a server for a single game. This will block until the game ends,
 -- specifically when all players have disconnected.
@@ -200,6 +205,7 @@ runServerWith serverPort tickRate netConfig input0 = do
     tickRate
     netConfig
     input0
+
 
 -- Forever decode messages from the input socket using the given decoding
 -- function and writing it to the given chan. Loops forever.

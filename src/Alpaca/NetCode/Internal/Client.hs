@@ -46,6 +46,7 @@ import qualified Data.Map as M
 import Data.Maybe (catMaybes, fromMaybe, isJust)
 import qualified Data.Set as S
 import Flat
+import Prelude
 
 
 -- | A Client. You'll generally obtain this via 'Alpaca.NetCode.runClient'.
@@ -120,7 +121,8 @@ data ClientConfig = ClientConfig
     -- mittigate the effect for dropped packets. 'defaultClientConfig'
     -- uses @15@.
     ccSubmitInputDuplication :: Int
-  } deriving (Show, Read, Eq, Ord)
+  }
+  deriving (Show, Read, Eq, Ord)
 
 
 -- | Sensible defaults for @ClientConfig@ based on the tick rate.

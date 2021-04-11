@@ -24,9 +24,10 @@ module Alpaca.NetCode.Internal.ClockSync where
 
 import Alpaca.NetCode.Internal.Common
 import Control.Concurrent.STM
-import Data.Maybe (fromMaybe)
-
 import Data.Int (Int64)
+import Data.Maybe (fromMaybe)
+import Prelude
+
 
 -- TODO make all these constants part of ClientConfig
 
@@ -37,48 +38,55 @@ import Data.Int (Int64)
 minTimeDilation :: Float
 minTimeDilation = 0.9
 
+
 maxTimeDilation :: Float
 maxTimeDilation = 1.1
+
 
 -- Number of ping samples to maintain
 pingSamples :: Int
 pingSamples = 8
 
+
 -- Number of timing samples to maintain
 timingSamples :: Int
 timingSamples = 40
 
+
 -- Some state for managing clock synchronization
 data ClockSync = ClockSync
   -- On the last server time estimate: (client's local time, estimated server's local time)
-  { csLastSample :: Maybe (Time, Time),
-    -- Last few samples of point times
-    csPingSamples :: [Duration],
-    -- Last few samples of: (server time, estimated corresponding client time)
+  { csLastSample :: Maybe (Time, Time)
+  , -- Last few samples of point times
+    csPingSamples :: [Duration]
+  , -- Last few samples of: (server time, estimated corresponding client time)
     -- relative to base.
     csTimingSamples :: [(Time, Time)]
   }
 
+
 csEstPing :: ClockSync -> Duration
-csEstPing (ClockSync {csPingSamples = xs}) = sum xs / (realToFrac $ length xs)
+csEstPing (ClockSync{csPingSamples = xs}) = sum xs / (realToFrac $ length xs)
+
 
 -- | returns (off, drift) sutch that serverTime = (drift * clientTime) + offset
 csEstOffsetAndDrift :: ClockSync -> Maybe (Time, Time)
-csEstOffsetAndDrift (ClockSync {csTimingSamples = xs})
+csEstOffsetAndDrift (ClockSync{csTimingSamples = xs})
   | nInt < pingSamples || slopDenom == 0 = Nothing
   -- TODO perhaps it's more efficient to just use https://en.wikipedia.org/wiki/Simple_linear_regression#Fitting_the_regression_line
 
   | otherwise = Just (offset, slope)
-  where
-    nInt = length xs
-    n = fromIntegral nInt
-    avg xs' = sum xs' / n
-    avgServer = avg (fst <$> xs)
-    avgClient = avg (snd <$> xs)
-    slopNumer = sum [(s - avgServer) * (c - avgClient) | (s, c) <- xs]
-    slopDenom = sum [(c - avgClient) ^ (2 :: Int64) | (_, c) <- xs]
-    slope = slopNumer / slopDenom
-    offset = avgServer - (slope * avgClient)
+ where
+  nInt = length xs
+  n = fromIntegral nInt
+  avg xs' = sum xs' / n
+  avgServer = avg (fst <$> xs)
+  avgClient = avg (snd <$> xs)
+  slopNumer = sum [(s - avgServer) * (c - avgClient) | (s, c) <- xs]
+  slopDenom = sum [(c - avgClient) ^ (2 :: Int64) | (_, c) <- xs]
+  slope = slopNumer / slopDenom
+  offset = avgServer - (slope * avgClient)
+
 
 -- | Initialize clock synchronization.
 initializeClockSync ::
@@ -161,7 +169,7 @@ initializeClockSync tickTime getTime = do
             let elapsedTime = clampedEstServerTime
                 latency = csEstPing newCS / 2 -- TODO I think adding latency is probably causing some annoying preceived input latency variablility. Rethink this!
                 dilatedEstServerTime = (elapsedTime + latency + bufferTime + extraTime)
-                newCS = cs {csLastSample = Just (clientTime, clampedEstServerTime)}
+                newCS = cs{csLastSample = Just (clientTime, clampedEstServerTime)}
                 ping = csEstPing newCS
             return $ Just (estServerTime + latency + bufferTime, dilatedEstServerTime, ping, newCS)
 
@@ -170,17 +178,17 @@ initializeClockSync tickTime getTime = do
         let pingSample = clientReceiveTime - clientSendTime
             latency = pingSample / 2
             timingSample =
-              ( serverTime,
-                latency + clientSendTime
+              ( serverTime
+              , latency + clientSendTime
               )
 
         _cs' <- atomically $ do
           cs <- readTVar clockSyncTVar
           let cs' =
                 ClockSync
-                  { csLastSample = csLastSample cs,
-                    csPingSamples = take pingSamples (pingSample : csPingSamples cs),
-                    csTimingSamples = take timingSamples (timingSample : csTimingSamples cs)
+                  { csLastSample = csLastSample cs
+                  , csPingSamples = take pingSamples (pingSample : csPingSamples cs)
+                  , csTimingSamples = take timingSamples (timingSample : csTimingSamples cs)
                   }
           writeTVar clockSyncTVar cs'
           return cs'
